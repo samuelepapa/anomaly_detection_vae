@@ -21,6 +21,7 @@ from torch import optim
 
 # plotting
 import matplotlib.pyplot as plt
+%matplotlib inline
 
 # timesynth package for synthetic time series data creation: https://github.com/TimeSynth/TimeSynth
 import timesynth as ts  # install cmd: pip install git+https://github.com/TimeSynth/TimeSynth.git
@@ -31,7 +32,6 @@ use_cuda = torch.cuda.is_available()
 device = torch.device('cuda:0' if use_cuda else 'cpu')
 
 # %% data generation
-from torch.utils.data import DataLoader
 
 class SyntheticDataset(Dataset):
     """Setup data for the time series data"""
@@ -58,11 +58,19 @@ class SyntheticDataset(Dataset):
             sample = self.transform(sample)
         return sample.to(self.device)
 
-def generate_timeseries(signals, T = 10000, noise_std = 0.01):
+def generate_timeseries(signals, 
+                        T = 100, 
+                        noise_std = 0.01, 
+                        transforms = None, # a list of anonymous functions e.g [lambda x: x**2, lambda x: np.sin(x)]
+                        transforms_std = None # if defined, should be e.g. [0.1,0.2,0.5] for 3 transforms
+                        ):
+
     # used to define the time scale
     time_sampler = ts.TimeSampler(stop_time=1000)
+    
     # create the time samples
     regular_time_samples = time_sampler.sample_regular_time(num_points=T)
+    
     # define the standard gaussian white noise to add
     white_noise = ts.noise.GaussianNoise(std=noise_std)
 
@@ -75,12 +83,69 @@ def generate_timeseries(signals, T = 10000, noise_std = 0.01):
         if signal_type == "ar":
             ar_p = ts.signals.AutoRegressive(**params)
             timeserieses.append(ts.TimeSeries(signal_generator=ar_p))
+        if signal_type == "gp": # gaussian process
+            gp = ts.signals.GaussianProcess(**params)
+            timeserieses.append(ts.TimeSeries(gp, noise_generator=white_noise))
 
     # convert to numpy array and select only the signals
     output_samples = np.array([cur_timeseries.sample(regular_time_samples)[0]
                                                 for cur_timeseries in timeserieses])
+    
+    # apply transforms to obtain correlated time series. Each transformation will be 
+    # applied to each time series sequence. So only the original/untransformed sequences 
+    # will be truly uncorrelated
+    if transforms is not None:
+          # if no noise/standard deviation was given for the transformations just use the noise_std
+          if transforms_std is None:
+               transforms_std = [noise_std]*len(transforms)
+          
+          # apply the transforms
+          output_samples_transforms = output_samples
+          for f_idx, f in enumerate(transforms):
+              std = transforms_std[f_idx]
+              transformed_seq = f(output_samples) + np.random.randn(T)*std
+              output_samples_transforms = np.append(output_samples_transforms, 
+                                                    transformed_seq,
+                                                    axis=0)
+          output_samples = output_samples_transforms
+    
     # transpose to allow [time x features]
     return output_samples.T
+
+#%% testing time series generation:
+
+# gaussian process with linear kernel
+signals = [
+    ("gp", {"kernel":'Linear'})
+]
+
+# sine sequences
+signals = [
+    ("sinusoid", {"frequency":1.25}),
+    ("sinusoid", {"frequency":1})
+]
+
+# create the timeseries
+train_timeseries = generate_timeseries(signals, T = 1000, noise_std=0.1)
+train_timeseries = generate_timeseries(signals, T = 1000, noise_std=0.1,
+                                       transforms = [lambda x: x+10,
+                                                     lambda x: x**2+5,
+                                                     lambda x: np.sin(x)+6],
+                                       transforms_std = [0.7,0.3,0.4])
+# plot them
+plt.plot(train_timeseries)
+train_timeseries.shape
+
+# eyeball correlation matrix
+import pandas as pd
+data = pd.DataFrame(train_timeseries)
+data.corr()
+plt.matshow(data.corr())
+plt.colorbar()
+
+# end of testing
+
+#%% define anomaly function
 
 def insert_anomalies(timeseries_samples, p = 0.01, magnitude = 1):
     import random as rnd
@@ -118,12 +183,16 @@ train_timeseries = generate_timeseries(signals, T = T)
 
 #print(train_timeseries.shape)
 train_timeseries_signals, train_timeseries_labels = insert_anomalies(train_timeseries, magnitude = 0)
+
+
 batch_size = B
 features = len(signals)
 train_dataset = SyntheticDataset(train_timeseries_signals, features, window_size = W)
 train_loader = DataLoader(train_dataset, batch_size = batch_size,  shuffle = True)
 
 print("DataLoader initialized")
+
+#%% Model definition
 
 class Variational_LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim_rec, hidden_dim_gen, latent_dim, batch_size):
