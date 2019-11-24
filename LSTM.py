@@ -21,7 +21,6 @@ from torch import optim
 
 # plotting
 import matplotlib.pyplot as plt
-%matplotlib inline
 
 # timesynth package for synthetic time series data creation: https://github.com/TimeSynth/TimeSynth
 import timesynth as ts  # install cmd: pip install git+https://github.com/TimeSynth/TimeSynth.git
