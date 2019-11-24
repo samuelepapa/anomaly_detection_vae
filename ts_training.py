@@ -13,11 +13,9 @@ def train_network(train_loader, valid_loader, epochs, net, loss_function, optimi
                 print("Epoch: {}".format(epoch))
         batch_loss = []
         for batch_idx, x in enumerate(train_loader):
-            # if (batch_idx % 10 == 0):
-            #    print("Batch idx: ", batch_idx)
             net.zero_grad()
+            # shape: [batch_size, seq_len, features]
             input = x
-            # targets = torch.from_numpy(train_timeseries_signals[1:]).float().unsqueeze(1)
 
             output_model = net(input)
 

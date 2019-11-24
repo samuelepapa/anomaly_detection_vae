@@ -5,7 +5,7 @@ import torch
 import math
 
 
-def get_train_valid_test_dataloaders(T, W, B, dataset_id, t_v_t_split, device):
+def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
     ADDANOMALIES = False
     train_valid_time = math.floor(t_v_t_split[0] * T)
     valid_test_time = math.floor((t_v_t_split[0] + t_v_t_split[1]) * T)
@@ -27,7 +27,6 @@ def get_train_valid_test_dataloaders(T, W, B, dataset_id, t_v_t_split, device):
         valid_timeseries_signals = timeseries_signals[train_valid_time:valid_test_time]
         test_timeseries_signals = timeseries_signals[valid_test_time:]
 
-        # create the Synthetic Dataset
         train_dataset = SyntheticDataset(train_timeseries_signals, features, window_size=W, device=device)
         valid_dataset = SyntheticDataset(valid_timeseries_signals, features, window_size=W, device=device)
         test_dataset = SyntheticDataset(test_timeseries_signals, features, window_size=W, device=device)
@@ -57,6 +56,6 @@ def get_train_valid_test_dataloaders(T, W, B, dataset_id, t_v_t_split, device):
     # set up the DataLoader
     # This dataloader will load data with shape [batch_size, time_length, features]
     return features, \
-           DataLoader(train_dataset, batch_size=B, shuffle=True), \
-           DataLoader(valid_dataset, batch_size=B, shuffle=True), \
-           DataLoader(test_dataset, batch_size=1, shuffle=True)
+           train_dataset, \
+           valid_dataset, \
+           test_dataset

@@ -19,11 +19,9 @@ class Standard_LSTM(nn.Module):
 
     def forward(self, x):
         outputs = {}
-        time_length = len(x)
         outputs["x_input"] = x
 
         x = x.permute(1, 0, 2)
-        #        x = x.view(time_length, self.batch_size, self.input_dimension)
         # lstm_out is the output of the last layer of hidden units [seq_len, batch, num_directions * hidden_size]
         # h is the hidden states at the last time step
         # c is the cell state at the last time step
@@ -45,15 +43,17 @@ def loss_function_normal(model_output):
 
     input_dimension = x_true.shape[2]
 
+    # check to see if something went wrong with selecting the right loss function and network pair
     if model_output["x_hat_params"].shape[2] != 2 * input_dimension:
         raise ValueError("Wrong input dimensions or number of parameters in the output")
 
+    # extrapolate parameters
     mu, log_var = torch.chunk(model_output["x_hat_params"], 2, dim=2)
     sigma = torch.exp(log_var / 2)
 
+    #get the length of the sequence
     seq_length = mu.shape[1]
-    # iterate over each time step in the sequence to compute NLL and KL terms
-
+    # iterate over each time step in the sequence to compute NLL
     t = 0
     cov_matrix = torch.diag_embed(sigma[:, t, :])
     # define the distribution
