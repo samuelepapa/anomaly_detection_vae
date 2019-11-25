@@ -1,8 +1,10 @@
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def train_network(train_loader, valid_loader, epochs, net, loss_function, optimizer, scheduler=None, plotting=True):
+def train_network(device, train_loader, valid_loader, epochs, net, loss_function, optimizer, scheduler=None,
+                  plotting=True):
     train_loss = []
     print("Starting training")
 
@@ -17,17 +19,16 @@ def train_network(train_loader, valid_loader, epochs, net, loss_function, optimi
             # shape: [batch_size, seq_len, features]
             input = x
 
-            output_model = net(input)
+            output_model = net(input, device)
 
-            loss = loss_function(output_model)
-            batch_loss.append(loss.item())
+            loss_params = loss_function(output_model, device)
+            batch_loss.append(loss_params["loss"].item())
 
-            loss.backward()
+            loss_params["loss"].backward()
             optimizer.step()
 
         train_loss.append(np.mean(batch_loss))
         if epoch % 10 == 0:
-            plt.close("all")
             plt.plot(range(len(train_loss)), train_loss)
             plt.show()
 

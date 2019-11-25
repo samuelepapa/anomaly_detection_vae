@@ -17,7 +17,7 @@ class Standard_LSTM(nn.Module):
         self.lstm = nn.LSTM(input_dimension, hidden_dim)
         self.hidden2params = nn.Linear(hidden_dim, param_size * input_dimension)
 
-    def forward(self, x):
+    def forward(self, x, device):
         outputs = {}
         outputs["x_input"] = x
 
@@ -37,7 +37,7 @@ class Standard_LSTM(nn.Module):
         return outputs
 
 
-def loss_function_normal(model_output):
+def loss_function_normal(model_output, device):
     # unpack the required quantities
     x_true = model_output["x_input"]
 
@@ -73,4 +73,7 @@ def loss_function_normal(model_output):
         # print(x_true.shape)
 
     NLL = - torch.mean(log_prob, dim=0) / seq_length
-    return NLL
+    return {
+        "loss": NLL,
+        "NLL": NLL
+    }
