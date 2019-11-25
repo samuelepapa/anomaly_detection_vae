@@ -100,8 +100,8 @@ def loss_normal2d(model_output, device):
     t = 0
     cov_matrix = torch.diag_embed(sigma[:, t, :])
     # define the distribution
-    p = distributions.MultivariateNormal(mu[:, t, :], cov_matrix)
-    log_prob = p.log_prob(x_true[:, t + 1, :])
+    p = distributions.Normal(mu[:, t, :], sigma[:, t, :])
+    log_prob = torch.mean(p.log_prob(x_true[:, t + 1, :]), dim=-1)
     # dimensions [batch_size, dimension]
     ones_vector = torch.ones((z_mu.shape[0], z_mu.shape[2])).to(device)
     kl = 0.5 * torch.sum(ones_vector + z_log_var[:, t, :] - z_mu[:, t, :] ** 2 - torch.exp(z_log_var[:, t, :]), dim=-1)
@@ -113,14 +113,15 @@ def loss_normal2d(model_output, device):
         cov_matrix = torch.diag_embed(sigma[:, t, :])
 
         # define the distribution
-        p = distributions.MultivariateNormal(mu[:, t, :], cov_matrix)
+        p = distributions.Normal(mu[:, t, :], sigma[:, t, :])
 
-        log_prob += p.log_prob(x_true[:, t + 1, :])
+        log_prob += torch.mean(p.log_prob(x_true[:, t + 1, :]), dim=-1)
         kl += 0.5 * torch.sum(ones_vector + z_log_var[:, t, :] - z_mu[:, t, :] ** 2 -
                               torch.exp(z_log_var[:, t, :]))
 
     NLL, KL = -torch.mean(log_prob, dim=0) / (seq_length - 1), -torch.mean(kl, dim=0) / (seq_length - 1)
-    ELBO = NLL + KL
+
+    ELBO = NLL + 0 * KL
 
     return {
         "loss": ELBO,

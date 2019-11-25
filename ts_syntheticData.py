@@ -13,7 +13,8 @@ class SyntheticDataset(Dataset):
     def __init__(self, data, dimensions, window_size=100, device='cpu', transform=None):
         # when window_size = 1 it means that it takes one time-step at a time
         self.device = device
-        self.data = torch.tensor(data, dtype=torch.float).view(-1, dimensions)
+        self.data = torch.tensor(data[0], dtype=torch.float).view(-1, dimensions)
+        self.labels = torch.tensor(data[1], dtype=torch.float)
         # the length of the time series we look at for each weight update
         self.window_size = window_size
         self.transform = transform
@@ -26,10 +27,13 @@ class SyntheticDataset(Dataset):
 
     def __getitem__(self, idx):
         sample = self.data[idx: idx + self.window_size]
+        label = self.labels[idx: idx + self.window_size]
         if self.transform:
             sample = self.transform(sample)
-        return sample.to(self.device)
+        return sample.to(self.device), label.to(self.device)
 
+    def get_data(self):
+        return self.data, self.labels
 
 def generate_timeseries(signals,
                         T=100,  # number of samples taken from the time interval [0, 1000]
