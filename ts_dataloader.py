@@ -3,6 +3,38 @@ from torch.utils.data import DataLoader
 import numpy as np
 import torch
 import math
+import pandas as pd
+
+import torch
+from torch.utils.data import Dataset, DataLoader
+
+
+class RealisticDataset(Dataset):
+    """Setup data for the time series data"""
+
+    def __init__(self, data, dimensions, window_size=100, device='cpu', transform=None):
+        # when window_size = 1 it means that it takes one time-step at a time
+        self.device = device
+        self.data = torch.tensor((data - np.mean(data, axis=0)) / np.std(data, axis=0), dtype=torch.float).view(-1,
+                                                                                                                dimensions)
+        # the length of the time series we look at for each weight update
+        self.window_size = window_size
+        self.transform = transform
+
+    def __len__(self):
+        # this is the number of time serieses that are created when using a set
+        # window size. If window size = len of the time series, then I have 1 time series
+        # available for training
+        return self.data.shape[0] - self.window_size + 1
+
+    def __getitem__(self, idx):
+        sample = self.data[idx: idx + self.window_size]
+        if self.transform:
+            sample = self.transform(sample)
+        return sample.to(self.device), sample.to(self.device)
+
+    def get_data(self):
+        return self.data, self.data
 
 
 def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
@@ -26,12 +58,11 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
         # generate the time series using signals
         timeseries_signals = generate_timeseries(signals, T=T)
         timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=0.1)
-        print(timeseries_signals.shape)
         # create train/valid/test split
         maximum = np.max(timeseries_signals)
-        train_timeseries_signals = timeseries_signals[0:train_valid_time] / maximum
-        valid_timeseries_signals = timeseries_signals[train_valid_time:valid_test_time] / maximum
-        test_timeseries_signals = timeseries_signals[valid_test_time:] / maximum
+        train_timeseries_signals = timeseries_signals[0:train_valid_time]
+        valid_timeseries_signals = timeseries_signals[train_valid_time:valid_test_time]
+        test_timeseries_signals = timeseries_signals[valid_test_time:]
 
         train_timeseries_labels = timeseries_labels[0:train_valid_time]
         valid_timeseries_labels = timeseries_labels[train_valid_time:valid_test_time]
@@ -48,9 +79,8 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
     elif dataset_id == 1:
         # sine sequences
         signals = [
-            # ("sinusoid", {"frequency": 1.25}),
-            ("sinusoid", {"frequency": 1}),
-            # ("gp", {"kernel": "Linear", "c":1,"offset":-10, "variance": 0.1})
+            ("sinusoid", {"frequency": 1.25}),
+            ("sinusoid", {"frequency": 0.7})
         ]
 
 
@@ -60,26 +90,18 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
                                                              lambda x: x ** 2,
                                                              lambda x: np.sin(x)],
                                                  transforms_std=[0.007, 0.003, 0.004])
-        # timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001,
-        #                                         transforms=[lambda x: x,
-        #                                                     lambda x: x,
-        #                                                     lambda x: x],
-        #                                         transforms_std=[0.01, 0.01, 0.01])
-        # timeseries_signals = np.ones((T,5))*5
-        #        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001)
-        # timeseries_signals = ((np.array(list(range(T)))-T/2)).reshape(T,1)
+
+        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001,
+                                                 transforms=[lambda x: x ** 2],
+                                                 transforms_std=[0.003])
+
         features = timeseries_signals.shape[1]
+
         timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=0)
-        print(timeseries_signals.shape)
-        maximum = np.max(np.abs(timeseries_signals))
 
-        train_timeseries_signals = timeseries_signals[0:train_valid_time] / maximum
-        valid_timeseries_signals = timeseries_signals[train_valid_time:valid_test_time] / maximum
-        test_timeseries_signals = timeseries_signals[valid_test_time:] / maximum
-
-        import matplotlib.pyplot as plt
-        plt.plot(list(range(len(train_timeseries_signals))), train_timeseries_signals)
-        plt.show()
+        train_timeseries_signals = timeseries_signals[0:train_valid_time]
+        valid_timeseries_signals = timeseries_signals[train_valid_time:valid_test_time]
+        test_timeseries_signals = timeseries_signals[valid_test_time:]
 
         train_timeseries_labels = timeseries_labels[0:train_valid_time]
         valid_timeseries_labels = timeseries_labels[train_valid_time:valid_test_time]
@@ -93,6 +115,15 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
                                         device=device)
 
         print("Dataset created.")
+    elif dataset_id == 2:
+        df_LA = pd.read_csv("LA.csv")
+        features = 5
+        train_dataset = RealisticDataset(df_LA.to_numpy()[0:train_valid_time, :], features, window_size=W,
+                                         device=device)
+        valid_dataset = RealisticDataset(df_LA.to_numpy()[train_valid_time:valid_test_time, :], features, window_size=W,
+                                         device=device)
+        test_dataset = RealisticDataset(df_LA.to_numpy()[valid_test_time:, :], features, window_size=W, device=device)
+
     # set up the DataLoader
     # This dataloader will load data with shape [batch_size, time_length, features]
     return features, \
