@@ -10,17 +10,20 @@ import matplotlib.pyplot as plt
 class SyntheticDataset(Dataset):
     """Setup data for the time series data"""
 
-    def __init__(self, data, dimensions, window_size=100, device='cpu', transform=None):
+    def __init__(self, data, dimensions, window_size=None, device='cpu', transform=None):
         # when window_size = 1 it means that it takes one time-step at a time
         self.device = device
-        self.data = torch.tensor((data[0] - np.mean(data[0], axis=0)) / np.std(data[0], axis=0),
-                                 dtype=torch.float).view(-1, dimensions)
-        self.labels = torch.tensor(data[1], dtype=torch.float)
+        self.data = torch.tensor(data[0], dtype=torch.float).view(-1, dimensions)
+        self.labels = torch.tensor(data[1], dtype=torch.bool)
         # the length of the time series we look at for each weight update
-        self.window_size = window_size
+        if window_size != None:
+            self.window_size = window_size
+        else:
+            self.window_size = self.data.shape[0]
         self.transform = transform
 
     def __len__(self):
+
         # this is the number of time serieses that are created when using a set
         # window size. If window size = len of the time series, then I have 1 time series
         # available for training
@@ -36,6 +39,10 @@ class SyntheticDataset(Dataset):
     def get_data(self):
         return self.data, self.labels
 
+    def has_labels(self):
+        return True
+
+
 def generate_timeseries(signals,
                         T=100,  # number of samples taken from the time interval [0, 1000]
                         noise_std=0.01,  # standard deviation of the Gaussian Noise added to the signal
@@ -43,7 +50,7 @@ def generate_timeseries(signals,
                         transforms_std=None  # if defined, should be e.g. [0.1,0.2,0.5] for 3 transforms
                         ):
     # used to define the time scale
-    time_sampler = ts.TimeSampler(stop_time=1000)
+    time_sampler = ts.TimeSampler(stop_time=T // 2)
 
     # create the time samples
     regular_time_samples = time_sampler.sample_regular_time(num_points=T)
@@ -101,14 +108,14 @@ def insert_anomalies(timeseries_samples, p=0.01, magnitude=1):
     for sample in timeseries_samples:
         t += 1
         if rnd.random() < p:
-            labels.append(1)
+            labels.append(True)
             if rnd.random() < 0.5:
                 timeseries_samples_with_anomalies[t] = sample + anomaly
             else:
                 timeseries_samples_with_anomalies[t] = sample - anomaly
 
         else:
-            labels.append(0)
+            labels.append(False)
             timeseries_samples_with_anomalies[t] = sample
 
     return timeseries_samples_with_anomalies, labels

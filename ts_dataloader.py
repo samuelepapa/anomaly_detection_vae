@@ -30,13 +30,16 @@ class RealisticDataset(Dataset):
         sample = self.data[idx: idx + self.window_size]
         if self.transform:
             sample = self.transform(sample)
-        return sample.to(self.device), sample.to(self.device)
+        return sample.to(self.device), None
 
     def get_data(self):
-        return self.data, self.data
+        return self.data, None
+
+    def has_labels(self):
+        return False
 
 
-def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
+def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device, p=0.001):
     ADDANOMALIES = False
     train_valid_time = math.floor(t_v_t_split[0] * T)
     valid_test_time = math.floor((t_v_t_split[0] + t_v_t_split[1]) * T)
@@ -57,11 +60,14 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
         # generate the time series using signals
         timeseries_signals = generate_timeseries(signals, T=T)
         timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=0.1)
+
+        # normalize the signal
+        normalized_signals = (timeseries_signals - np.mean(timeseries_signals, axis=0)) / np.std(timeseries_signals,
+                                                                                                 axis=0)
         # create train/valid/test split
-        maximum = np.max(timeseries_signals)
-        train_timeseries_signals = timeseries_signals[0:train_valid_time]
-        valid_timeseries_signals = timeseries_signals[train_valid_time:valid_test_time]
-        test_timeseries_signals = timeseries_signals[valid_test_time:]
+        train_timeseries_signals = normalized_signals[0:train_valid_time]
+        valid_timeseries_signals = normalized_signals[train_valid_time:valid_test_time]
+        test_timeseries_signals = normalized_signals[valid_test_time:]
 
         train_timeseries_labels = timeseries_labels[0:train_valid_time]
         valid_timeseries_labels = timeseries_labels[train_valid_time:valid_test_time]
@@ -69,38 +75,38 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
 
         train_dataset = SyntheticDataset([train_timeseries_signals, train_timeseries_labels], features, window_size=W,
                                          device=device)
-        valid_dataset = SyntheticDataset([valid_timeseries_signals, valid_timeseries_labels], features, window_size=W,
-                                         device=device)
-        test_dataset = SyntheticDataset([test_timeseries_signals, test_timeseries_labels], features, window_size=W,
-                                        device=device)
+        valid_dataset = SyntheticDataset([valid_timeseries_signals, valid_timeseries_labels], features, device=device)
+        test_dataset = SyntheticDataset([test_timeseries_signals, test_timeseries_labels], features, device=device)
 
         print("Dataset created.")
     elif dataset_id == 1:
         # sine sequences
         signals = [
             ("sinusoid", {"frequency": 0.025}),
-            ("sinusoid", {"frequency": 0.07})
+            ("ar", {"ar_param": [0.9], "sigma": 0.01})
         ]
-
 
         # create the timeseries
         timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001,
-                                                 transforms=[lambda x: x ** 3 + 10,
+                                                 transforms=[lambda x: x ** 3,
                                                              lambda x: x ** 2,
                                                              lambda x: np.sin(x)],
                                                  transforms_std=[0.007, 0.003, 0.004])
 
-        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001,
-                                                 transforms=[lambda x: x ** 2],
-                                                 transforms_std=[0.003])
+        # timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001,
+        #                                         transforms=[lambda x: x ** 2],
+        #                                         transforms_std=[0.003])
 
         features = timeseries_signals.shape[1]
 
-        timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=0)
+        timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=0.1, p=p)
 
-        train_timeseries_signals = timeseries_signals[0:train_valid_time]
-        valid_timeseries_signals = timeseries_signals[train_valid_time:valid_test_time]
-        test_timeseries_signals = timeseries_signals[valid_test_time:]
+        normalized_signals = (timeseries_signals - np.mean(timeseries_signals, axis=0)) / np.std(timeseries_signals,
+                                                                                                 axis=0)
+
+        train_timeseries_signals = normalized_signals[0:train_valid_time]
+        valid_timeseries_signals = normalized_signals[train_valid_time:valid_test_time]
+        test_timeseries_signals = normalized_signals[valid_test_time:]
 
         train_timeseries_labels = timeseries_labels[0:train_valid_time]
         valid_timeseries_labels = timeseries_labels[train_valid_time:valid_test_time]
@@ -108,10 +114,8 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
 
         train_dataset = SyntheticDataset([train_timeseries_signals, train_timeseries_labels], features, window_size=W,
                                          device=device)
-        valid_dataset = SyntheticDataset([valid_timeseries_signals, valid_timeseries_labels], features, window_size=W,
-                                         device=device)
-        test_dataset = SyntheticDataset([test_timeseries_signals, test_timeseries_labels], features, window_size=W,
-                                        device=device)
+        valid_dataset = SyntheticDataset([valid_timeseries_signals, valid_timeseries_labels], features, device=device)
+        test_dataset = SyntheticDataset([test_timeseries_signals, test_timeseries_labels], features, device=device)
 
         print("Dataset created.")
     elif dataset_id == 2:
