@@ -15,8 +15,7 @@ class RealisticDataset(Dataset):
     def __init__(self, data, dimensions, window_size=100, device='cpu', transform=None):
         # when window_size = 1 it means that it takes one time-step at a time
         self.device = device
-        self.data = torch.tensor((data - np.mean(data, axis=0)) / np.std(data, axis=0), dtype=torch.float).view(-1,
-                                                                                                                dimensions)
+        self.data = torch.tensor(data, dtype=torch.float).view(-1, dimensions)
         # the length of the time series we look at for each weight update
         self.window_size = window_size
         self.transform = transform
@@ -43,15 +42,15 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
     valid_test_time = math.floor((t_v_t_split[0] + t_v_t_split[1]) * T)
     if dataset_id == 0:
         signals = [
-            ("sinusoid", {"frequency": 0.019}),
-            ("sinusoid", {"frequency": 0.05}),
-            ("sinusoid", {"frequency": 0.03}),
-            ("sinusoid", {"frequency": 0.023}),
-            ("sinusoid", {"frequency": 0.1}),
-            ("sinusoid", {"frequency": 0.13}),
-            ("sinusoid", {"frequency": 0.87}),
-            ("sinusoid", {"frequency": 0.007}),
-            ("sinusoid", {"frequency": 0.3})
+            ("sinusoid", {"frequency": 0.0019}),
+            ("sinusoid", {"frequency": 0.005}),
+            ("sinusoid", {"frequency": 0.003}),
+            ("sinusoid", {"frequency": 0.0023}),
+            ("sinusoid", {"frequency": 0.01}),
+            ("sinusoid", {"frequency": 0.013}),
+            ("sinusoid", {"frequency": 0.087}),
+            ("sinusoid", {"frequency": 0.0007}),
+            ("sinusoid", {"frequency": 0.03})
         ]
         features = len(signals)
 
@@ -79,8 +78,8 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
     elif dataset_id == 1:
         # sine sequences
         signals = [
-            ("sinusoid", {"frequency": 1.25}),
-            ("sinusoid", {"frequency": 0.7})
+            ("sinusoid", {"frequency": 0.025}),
+            ("sinusoid", {"frequency": 0.07})
         ]
 
 
@@ -116,13 +115,18 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device):
 
         print("Dataset created.")
     elif dataset_id == 2:
+
         df_LA = pd.read_csv("LA.csv")
-        features = 5
-        train_dataset = RealisticDataset(df_LA.to_numpy()[0:train_valid_time, :], features, window_size=W,
+        features = 3
+        signals = df_LA.to_numpy()
+        normalized_signals = (signals - np.mean(signals, axis=0)) / np.std(signals, axis=0)
+        train_dataset = RealisticDataset(normalized_signals[0:train_valid_time, :3], features, window_size=W,
                                          device=device)
-        valid_dataset = RealisticDataset(df_LA.to_numpy()[train_valid_time:valid_test_time, :], features, window_size=W,
+        valid_dataset = RealisticDataset(normalized_signals[train_valid_time:valid_test_time, :3], features,
+                                         window_size=W,
                                          device=device)
-        test_dataset = RealisticDataset(df_LA.to_numpy()[valid_test_time:, :], features, window_size=W, device=device)
+        test_dataset = RealisticDataset(normalized_signals[valid_test_time:, :3], features, window_size=W,
+                                        device=device)
 
     # set up the DataLoader
     # This dataloader will load data with shape [batch_size, time_length, features]

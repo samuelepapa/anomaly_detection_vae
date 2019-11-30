@@ -15,9 +15,9 @@ class Standard_LSTM(nn.Module):
         self.hidden_dim = hidden_dim
         self.param_size = param_size
         self.lstm = nn.LSTM(input_dimension, hidden_dim, num_layers=2)
-        self.hidden2params = nn.Linear(hidden_dim, param_size * input_dimension)
-        self.relu = nn.ReLU()
         self.hidden2hidden = nn.Linear(hidden_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.hidden2params = nn.Linear(hidden_dim, param_size * input_dimension)
 
     def forward(self, x, device):
         outputs = {}

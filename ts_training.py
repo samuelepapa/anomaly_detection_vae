@@ -1,15 +1,19 @@
-
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def train_network(device, train_loader, valid_loader, epochs, net, loss_function, optimizer, scheduler=None,
+def train_network(device, train_loader, valid_loader, epochs, net, loss_function, optimizer, beta_annealing=None,
+                  scheduler=None,
                   plotting=True):
     train_loss = []
     train_KL = []
     print("Starting training")
 
     net.train()
+    if beta_annealing != None:
+        beta = beta_annealing(0, 0)
+    else:
+        beta = 1
 
     for epoch in range(epochs):
         if plotting:
@@ -25,8 +29,11 @@ def train_network(device, train_loader, valid_loader, epochs, net, loss_function
             input = x[0]
 
             output_model = net(input, device)
+            if beta_annealing == None:
+                loss_params = loss_function(output_model, device)
+            else:
 
-            loss_params = loss_function(output_model, device)
+                loss_params = loss_function(output_model, device, beta)
             batch_loss.append(loss_params["loss"].item())
             if "KL" in loss_params.keys():
                 batch_KL.append(loss_params["KL"].item())
@@ -51,6 +58,8 @@ def train_network(device, train_loader, valid_loader, epochs, net, loss_function
                 plt.show()
         if scheduler != None:
             scheduler.step()
+        if beta_annealing != None:
+            beta = beta_annealing(beta, epoch)
     if (plotting):
         plt.plot(range(len(train_loss)), train_loss)
         plt.show()
