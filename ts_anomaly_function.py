@@ -4,7 +4,7 @@ Created on Fri Nov 29 15:22:42 2019
 
 """
 import torch
-from torch import distributions
+from torch import distributions, Tensor
 
 
 # %% Outlier detection
@@ -18,6 +18,7 @@ from torch import distributions
 #      probability < prob_threshold is labeled as an outlier
 def detect_anomalies(sequence, net, device, prob_threshold):
     with torch.no_grad():
+        net.eval()
         # get it to the device and put the batch dimension
         prepared_sequence = (sequence).to(device).unsqueeze(0)
 
@@ -50,6 +51,52 @@ def detect_anomalies(sequence, net, device, prob_threshold):
             # store outlier label
             if probability < prob_threshold:
                 labels[t + 1] = True
+
+        # collect results in a dictionary
+        outliers = {
+            "outlier_label": labels,
+            "probability": probs
+        }
+    return outliers
+
+
+def detect_anomalies_VAE(model_output, device, prob_threshold):
+    with torch.no_grad():
+        x_true = model_output["x_input"].permute(1, 0, 2)
+        params = model_output["params"]
+        mu, logvar = torch.chunk(params, 2, dim=-1)
+        sigma = torch.exp(logvar / 2)
+
+        z_mu = model_output["z_mu"]
+        z_log_var = model_output["z_log_var"]
+
+        seq_length = mu.shape[0]
+        # iterate over each time step in the sequence to compute NLL and KL terms
+
+        # dimensions [batch_size, dimension]
+        ones_vector = torch.ones((z_mu.shape[1], z_mu.shape[2])).to(device)
+
+        labels = [False] * mu.shape[0]
+        probs = []
+        for t in range(0, seq_length - 1):
+            # print(t)
+            # construct (diagonal) covariance matrix for each time step based on
+            # the estimated var from the model
+            cov_matrix = torch.diag_embed(sigma[t, :, :])
+
+            # define the distribution
+            #        p = distributions.Normal(mu[:, t, :], sigma[:, t, :])
+            p = distributions.MultivariateNormal(mu[t, :, :], cov_matrix)
+
+            log_prob = torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
+            # KL-divergence
+            kl = - 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 -
+                                   torch.exp(z_log_var[t, :, :]))
+            lower_bound_probability = torch.exp(log_prob - kl).cpu().detach().numpy()
+
+            if lower_bound_probability < prob_threshold:
+                labels[t + 1] = True
+            probs.append(lower_bound_probability)
 
         # collect results in a dictionary
         outliers = {

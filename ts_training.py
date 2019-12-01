@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from ts_anomaly_function import detect_anomalies
+from ts_anomaly_function import detect_anomalies, detect_anomalies_VAE
 
 
 def anomaly_detection_accuracy(ground_truth, predictions):
@@ -42,7 +42,9 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
     # insert batch dimension
     valid_sequence_batched = valid_sequence.to(device).unsqueeze(0)
     # get the labels (if they are not available they will be set to None
-    valid_labels = valid_dataset.get_data()[1].to(device)
+    valid_labels = valid_dataset.get_data()[1]
+    if valid_dataset.has_labels():
+        valid_labels = valid_labels.to(device)
     # validation loss
     valid_loss = []
     # accuracy of the anomaly detector
@@ -112,11 +114,14 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
                 # if I am using the labelled validation set
                 if valid_dataset.has_labels():
                     # detect the anomalies
-                    anomaly_data = detect_anomalies(valid_sequence, net, device, p_anomaly)
+                    if beta_annealing is None:
+                        anomaly_data = detect_anomalies(valid_sequence, net, device, p_anomaly)
+                    else:
+                        anomaly_data = detect_anomalies_VAE(output_model, device, p_anomaly)
                     # what we predict is an anomaly
                     predictions = anomaly_data["outlier_label"]
                     # find the accuracy of the prediction
-                    anomaly_accuracy = anomaly_detection_accuracy(valid_labels[1:], predictions[:-1])
+                    anomaly_accuracy = anomaly_detection_accuracy(valid_labels, predictions)
 
                     valid_accuracy["total"] = np.append(valid_accuracy["total"], [anomaly_accuracy["total"]])
                     valid_accuracy["correct"] = np.append(valid_accuracy["correct"], [anomaly_accuracy["correct"]])
@@ -125,35 +130,50 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
                     valid_accuracy["f_negatives"] = np.append(valid_accuracy["f_negatives"],
                                                               [anomaly_accuracy["false_negatives"]])
             if plotting:
-                plt.figure(figsize=(15, 5))
-                if len(train_KL) == 0:
 
-                    ax1 = plt.subplot(1, 3, 1)
+                if len(train_KL) == 0:
+                    plt.figure(figsize=(20, 7))
+                    num_plots = 2 if valid_dataset.has_labels() else 1
+                    ax1 = plt.subplot(1, num_plots, 1)
                     ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
+                    ax1.plot(np.array(range(len(valid_loss))) * 10, valid_loss, label="Validation loss")
+                    ax1.set_xlabel("Epoch")
+                    ax1.set_ylabel("Loss")
                     ax1.legend()
-                    ax2 = plt.subplot(1, 3, 2)
-                    ax2.plot(range(len(valid_accuracy["total"])), valid_accuracy["correct"] / valid_accuracy["total"],
-                             label="Correctly labelled")
-                    ax2.legend()
-                    ax3 = plt.subplot(1, 3, 3)
-                    ax3.plot(range(len(valid_loss)), valid_loss, label="Validation loss")
-                    ax3.legend()
+
+                    if valid_dataset.has_labels():
+                        ax2 = plt.subplot(1, 3, 3)
+                        ax2.plot(np.array(range(len(valid_accuracy["total"]))) * 10,
+                                 valid_accuracy["correct"] / valid_accuracy["total"],
+                                 label="Correctly labelled signals")
+                        ax2.set_xlabel("Epoch")
+                        ax2.set_ylabel("Percentage")
+                        ax2.legend()
                     plt.show()
 
+
                 else:
-                    ax1 = plt.subplot(2, 2, 1)
+                    plt.figure(figsize=(20, 10))
+                    num_plots = 2 if valid_dataset.has_labels() else 1
+                    ax1 = plt.subplot(1, num_plots, 1)
                     ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
+                    ax1.plot(np.array(range(len(valid_loss))) * 10, valid_loss, label="Validation loss")
+                    ax1.set_xlabel("Epoch")
+                    ax1.set_ylabel("Loss")
                     ax1.legend()
-                    ax2 = plt.subplot(2, 2, 2)
+                    ax2 = plt.subplot(1, num_plots, 2)
                     ax2.plot(range(len(train_loss)), train_KL, label="Training KL")
+                    ax2.set_xlabel("Epoch")
+                    ax2.set_ylabel("KL")
                     ax2.legend()
-                    ax3 = plt.subplot(2, 2, 3)
-                    ax3.plot(range(len(valid_accuracy["total"])), valid_accuracy["correct"] / valid_accuracy["total"],
-                             label="Correctly labelled")
-                    ax3.legend()
-                    ax4 = plt.subplot(2, 2, 4)
-                    ax4.plot(range(len(valid_loss)), valid_loss, label="Validation loss")
-                    ax4.legend()
+                    if valid_dataset.has_labels():
+                        ax3 = plt.subplot(1, 3, 3)
+                        ax3.plot(range(len(valid_accuracy["total"])),
+                                 valid_accuracy["correct"] / valid_accuracy["total"],
+                                 label="Correctly labelled signals")
+                        ax3.set_xlabel("Epoch")
+                        ax3.set_ylabel("Percentage")
+                        ax3.legend()
                     plt.show()
 
         # step in the scheduler and in the annealing of beta

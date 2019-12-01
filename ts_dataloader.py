@@ -30,10 +30,10 @@ class RealisticDataset(Dataset):
         sample = self.data[idx: idx + self.window_size]
         if self.transform:
             sample = self.transform(sample)
-        return sample.to(self.device), None
+        return sample.to(self.device), sample.to(self.device)
 
     def get_data(self):
-        return self.data, None
+        return self.data, self.data
 
     def has_labels(self):
         return False
@@ -83,12 +83,12 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device, p=0.001)
         # sine sequences
         signals = [
             ("sinusoid", {"frequency": 0.025}),
-            ("ar", {"ar_param": [0.9], "sigma": 0.01})
+            ("gp", {"kernel": 'Periodic', "p": 50})
         ]
 
         # create the timeseries
-        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001,
-                                                 transforms=[lambda x: x ** 3,
+        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.005,
+                                                 transforms=[lambda x: 2 * x,
                                                              lambda x: x ** 2,
                                                              lambda x: np.sin(x)],
                                                  transforms_std=[0.007, 0.003, 0.004])
@@ -99,7 +99,12 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device, p=0.001)
 
         features = timeseries_signals.shape[1]
 
-        timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=0.1, p=p)
+        import matplotlib.pyplot as plt
+        plt.plot(range(len(timeseries_signals)), timeseries_signals)
+        timeseries_signals = (timeseries_signals - np.mean(timeseries_signals, axis=0)) / np.std(timeseries_signals,
+                                                                                                 axis=0)
+
+        timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=1, p=p)
 
         normalized_signals = (timeseries_signals - np.mean(timeseries_signals, axis=0)) / np.std(timeseries_signals,
                                                                                                  axis=0)

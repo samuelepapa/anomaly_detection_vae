@@ -50,7 +50,7 @@ def generate_timeseries(signals,
                         transforms_std=None  # if defined, should be e.g. [0.1,0.2,0.5] for 3 transforms
                         ):
     # used to define the time scale
-    time_sampler = ts.TimeSampler(stop_time=T // 2)
+    time_sampler = ts.TimeSampler(stop_time=T // 5)
 
     # create the time samples
     regular_time_samples = time_sampler.sample_regular_time(num_points=T)
@@ -67,6 +67,9 @@ def generate_timeseries(signals,
         if signal_type == "ar":  # autoregressive process
             ar_p = ts.signals.AutoRegressive(**params)
             timeserieses.append(ts.TimeSeries(signal_generator=ar_p))
+        if signal_type == "car":  # autoregressive process
+            car_p = ts.signals.CAR(**params)
+            timeserieses.append(ts.TimeSeries(signal_generator=car_p))
         if signal_type == "gp":  # gaussian process
             gp = ts.signals.GaussianProcess(**params)
             timeserieses.append(ts.TimeSeries(gp, noise_generator=white_noise))

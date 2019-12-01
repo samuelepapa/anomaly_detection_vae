@@ -88,6 +88,7 @@ df_HO = df_HO.drop(['datetime'], axis=1)
 df_LA.corr()
 
 df_LA.to_csv("LA.csv", header=True, index=False)
+df_HO.to_csv("HO.csv", header=True, index=False)
 
 # %% to numpy array
 
