@@ -148,13 +148,11 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
                                  label="Correctly labelled signals")
                         ax2.set_xlabel("Epoch")
                         ax2.set_ylabel("Percentage")
-                        ax2.legend()
+                        ax2.legend(loc = "upper left")
                     plt.show()
-
-
                 else:
                     plt.figure(figsize=(20, 10))
-                    num_plots = 2 if valid_dataset.has_labels() else 1
+                    num_plots = 3 if valid_dataset.has_labels() else 2
                     ax1 = plt.subplot(1, num_plots, 1)
                     ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
                     ax1.plot(np.array(range(len(valid_loss))) * 10, valid_loss, label="Validation loss")
@@ -168,12 +166,12 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
                     ax2.legend()
                     if valid_dataset.has_labels():
                         ax3 = plt.subplot(1, 3, 3)
-                        ax3.plot(range(len(valid_accuracy["total"])),
+                        ax3.plot(np.array(range(len(valid_accuracy["total"]))) * 10,
                                  valid_accuracy["correct"] / valid_accuracy["total"],
                                  label="Correctly labelled signals")
                         ax3.set_xlabel("Epoch")
                         ax3.set_ylabel("Percentage")
-                        ax3.legend()
+                        ax3.legend(loc="upper left")
                     plt.show()
 
         # step in the scheduler and in the annealing of beta
