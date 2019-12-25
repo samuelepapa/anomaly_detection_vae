@@ -3,6 +3,8 @@
 Created on Fri Nov 29 15:22:42 2019
 
 """
+import math
+import numpy as np
 import torch
 from torch import distributions, Tensor
 
@@ -16,7 +18,7 @@ from torch import distributions, Tensor
 #      that is, a tensor of dimension T x 2*D
 # - prob_threshold: a number between 0 and 1. An observation with 
 #      probability < prob_threshold is labeled as an outlier
-def detect_anomalies(sequence, net, device, prob_threshold):
+def detect_anomalies(sequence, net, device, prob_threshold, std=False, k=0):
     with torch.no_grad():
         net.eval()
         # get it to the device and put the batch dimension
@@ -37,20 +39,32 @@ def detect_anomalies(sequence, net, device, prob_threshold):
         probs = []
         labels = [False] * mu.shape[0]
         for t in range(0, mu.shape[0] - 1):
-            cov_matrix = torch.diag(std_dev[t, :])
-            # define distribution with params estimated for time t+1
-            # in the original sequence (that's simply t in the params
-            # outputted by the model)
-            p = distributions.MultivariateNormal(mu[t, :], cov_matrix)
+            if std:
+                # use the standard deviation to find if all the points are outside k times the std
+                anomaly = False
+                for feature in range(mu.shape[1]):
+                    # if the signal is inside in just one feature it's not an anomaly
+                    if (prepared_sequence[0, t + 1, feature] > mu[t, feature] + k * std_dev[t, feature]) or \
+                            (prepared_sequence[0, t + 1, feature] < mu[t, feature] - k * std_dev[t, feature]):
+                        anomaly = True
+                        break
+                if anomaly:
+                    labels[t + 1] = True
+            else:
+                cov_matrix = torch.diag(std_dev[t, :])
+                # define distribution with params estimated for time t+1
+                # in the original sequence (that's simply t in the params
+                # outputted by the model)
+                p = distributions.MultivariateNormal(mu[t, :], cov_matrix)
 
-            # measure the probability of the observation at time t+1
-            # under the model and store the probability
-            probability = torch.exp(p.log_prob(prepared_sequence[0, t + 1, :])).cpu().detach().numpy()
-            probs.append(probability)
+                # measure the probability of the observation at time t+1
+                # under the model and store the probability
+                probability = torch.exp(p.log_prob(prepared_sequence[0, t + 1, :])).cpu().detach().numpy()
+                probs.append(probability)
 
-            # store outlier label
-            if probability < prob_threshold:
-                labels[t + 1] = True
+                # store outlier label
+                if probability < prob_threshold:
+                    labels[t + 1] = True
 
         # collect results in a dictionary
         outliers = {
@@ -60,8 +74,14 @@ def detect_anomalies(sequence, net, device, prob_threshold):
     return outliers
 
 
-def detect_anomalies_VAE(model_output, device, prob_threshold):
+def detect_anomalies_VAE(sequence, net, device, prob_threshold):
     with torch.no_grad():
+        net.eval()
+        # get it to the device and put the batch dimension
+        prepared_sequence = (sequence).to(device).unsqueeze(0)
+
+        # run the model
+        model_output = net(prepared_sequence, device)
         x_true = model_output["x_input"].permute(1, 0, 2)
         params = model_output["params"]
         mu, logvar = torch.chunk(params, 2, dim=-1)
@@ -85,9 +105,7 @@ def detect_anomalies_VAE(model_output, device, prob_threshold):
             cov_matrix = torch.diag_embed(sigma[t, :, :])
 
             # define the distribution
-            #        p = distributions.Normal(mu[:, t, :], sigma[:, t, :])
-            p = distributions.MultivariateNormal(mu[t, :, :], cov_matrix)
-
+            p = distributions.Normal(mu[t, :, :], sigma[t, :, :])
             log_prob = torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
             # KL-divergence
             kl = - 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 -

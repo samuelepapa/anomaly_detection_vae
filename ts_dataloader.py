@@ -39,92 +39,71 @@ class RealisticDataset(Dataset):
         return False
 
 
-def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device, p=0.001):
-    ADDANOMALIES = False
-    train_valid_time = math.floor(t_v_t_split[0] * T)
-    valid_test_time = math.floor((t_v_t_split[0] + t_v_t_split[1]) * T)
-    if dataset_id == 0:
+def load_data(scenario, T):
+    if scenario == 0:
         signals = [
-            ("sinusoid", {"frequency": 0.0019}),
-            ("sinusoid", {"frequency": 0.005}),
-            ("sinusoid", {"frequency": 0.003}),
-            ("sinusoid", {"frequency": 0.0023}),
-            ("sinusoid", {"frequency": 0.01}),
-            ("sinusoid", {"frequency": 0.013}),
-            ("sinusoid", {"frequency": 0.087}),
-            ("sinusoid", {"frequency": 0.0007}),
+            ("sinusoid", {"frequency": 0.19}),
+            ("ar", {"ar_param": [0.8, 0.15], "sigma": 1}),
+            ("sinusoid", {"frequency": 0.5}),
+            ("sinusoid", {"frequency": 0.3}),
+            ("sinusoid", {"frequency": 0.23}),
+            ("sinusoid", {"frequency": 0.1}),
+            ("sinusoid", {"frequency": 0.3}),
+            ("sinusoid", {"frequency": 0.87}),
+            ("sinusoid", {"frequency": 0.07}),
             ("sinusoid", {"frequency": 0.03})
         ]
-        features = len(signals)
-
         # generate the time series using signals
-        timeseries_signals = generate_timeseries(signals, T=T)
-        timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=0.1)
+        signals = generate_timeseries(signals, T=T, noise_std=0.01)
 
+    elif scenario == 1:
+        # sine sequences
+        signals = [
+            ("sinusoid", {"frequency": 0.023, "amplitude": 2}),
+            #("sinusoid", {"frequency": 0.05, "amplitude": 2}),
+            #            ("gp", {"kernel": 'Periodic', "p": 50}),
+            ("ar", {"ar_param": [0.8, 0.15], "sigma": 1})
+        ]
+
+        # create the timeseries
+        signals = generate_timeseries(signals, T=T, noise_std=0.01,
+                                                 transforms=[#lambda x: 5 * np.sin(x),
+                                                             lambda x: x ** 3],
+                                                 #            #lambda x: 5 * np.sign(x)],
+                                                 transforms_std=[0.07, 0.03, 0.04])
+        #        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001)
+    elif scenario == 2:
+        df_LA = pd.read_csv("LA.csv")
+        signals = df_LA.to_numpy()[:T, :]
+
+    else:
+        raise ValueError("Scenario not recognized, it should be 0, 1 or 2.")
+    return signals
+
+
+def get_datasets(scenario, t_v_t_split, W, device, signals, labels=None):
+    T = signals.shape[0]
+    features = signals.shape[1]
+    train_valid_time = math.floor(t_v_t_split[0] * T)
+    valid_test_time = math.floor((t_v_t_split[0] + t_v_t_split[1]) * T)
+    if (scenario == 0) or (scenario == 1):
         # normalize the signal
-        normalized_signals = (timeseries_signals - np.mean(timeseries_signals, axis=0)) / np.std(timeseries_signals,
-                                                                                                 axis=0)
+        normalized_signals = (signals - np.mean(signals, axis=0)) / np.std(signals, axis=0)
         # create train/valid/test split
         train_timeseries_signals = normalized_signals[0:train_valid_time]
         valid_timeseries_signals = normalized_signals[train_valid_time:valid_test_time]
         test_timeseries_signals = normalized_signals[valid_test_time:]
 
-        train_timeseries_labels = timeseries_labels[0:train_valid_time]
-        valid_timeseries_labels = timeseries_labels[train_valid_time:valid_test_time]
-        test_timeseries_labels = timeseries_labels[valid_test_time:]
+        train_timeseries_labels = labels[0:train_valid_time]
+        valid_timeseries_labels = labels[train_valid_time:valid_test_time]
+        test_timeseries_labels = labels[valid_test_time:]
 
         train_dataset = SyntheticDataset([train_timeseries_signals, train_timeseries_labels], features, window_size=W,
                                          device=device)
         valid_dataset = SyntheticDataset([valid_timeseries_signals, valid_timeseries_labels], features, device=device)
         test_dataset = SyntheticDataset([test_timeseries_signals, test_timeseries_labels], features, device=device)
-
-        print("Dataset created.")
-    elif dataset_id == 1:
-        # sine sequences
-        signals = [
-            #("sinusoid", {"frequency": 0.025}),
-#            ("gp", {"kernel": 'Periodic', "p": 50}),
-            ("ar", {"ar_param": [0.8, 0.15], "sigma": 1})
-        ]
-
-        # create the timeseries
-        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.01,
-                                                 transforms=[lambda x: x ** 2,
-                                                             lambda x: x ** 2,
-                                                             lambda x: 10*np.sign(x)],
-                                                 transforms_std=[0.007, 0.003, 0.004])
-#        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001)
-        features = timeseries_signals.shape[1]
-
-        import matplotlib.pyplot as plt
-        plt.plot(range(len(timeseries_signals)), timeseries_signals)
-        timeseries_signals = (timeseries_signals - np.mean(timeseries_signals, axis=0)) / np.std(timeseries_signals,
-                                                                                                 axis=0)
-
-        timeseries_signals, timeseries_labels = insert_anomalies(timeseries_signals, magnitude=5, p=p)
-
-        normalized_signals = (timeseries_signals - np.mean(timeseries_signals, axis=0)) / np.std(timeseries_signals,
-                                                                                                 axis=0)
-
-        train_timeseries_signals = normalized_signals[0:train_valid_time]
-        valid_timeseries_signals = normalized_signals[train_valid_time:valid_test_time]
-        test_timeseries_signals = normalized_signals[valid_test_time:]
-
-        train_timeseries_labels = timeseries_labels[0:train_valid_time]
-        valid_timeseries_labels = timeseries_labels[train_valid_time:valid_test_time]
-        test_timeseries_labels = timeseries_labels[valid_test_time:]
-
-        train_dataset = SyntheticDataset([train_timeseries_signals, train_timeseries_labels], features, window_size=W,
-                                         device=device)
-        valid_dataset = SyntheticDataset([valid_timeseries_signals, valid_timeseries_labels], features, device=device)
-        test_dataset = SyntheticDataset([test_timeseries_signals, test_timeseries_labels], features, device=device)
-
-        print("Dataset created.")
-    elif dataset_id == 2:
-
-        df_LA = pd.read_csv("LA.csv")
+    elif scenario == 2:
         features = 3
-        signals = df_LA.to_numpy()
         normalized_signals = (signals - np.mean(signals, axis=0)) / np.std(signals, axis=0)
         train_dataset = RealisticDataset(normalized_signals[0:train_valid_time, :3], features, window_size=W,
                                          device=device)
@@ -133,9 +112,12 @@ def get_train_valid_test_signals(T, W, dataset_id, t_v_t_split, device, p=0.001)
                                          device=device)
         test_dataset = RealisticDataset(normalized_signals[valid_test_time:, :3], features, window_size=W,
                                         device=device)
+    else:
+        train_dataset = None
+        valid_dataset = None
+        test_dataset = None
 
-    # set up the DataLoader
-    # This dataloader will load data with shape [batch_size, time_length, features]
+
     return features, \
            train_dataset, \
            valid_dataset, \

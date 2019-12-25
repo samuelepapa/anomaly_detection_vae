@@ -21,21 +21,29 @@ class Variational_LSTM(nn.Module):
         # encoder net, recognition model q(z_t+1|x_1:t)
         self.encoder_LSTM = nn.LSTM(input_size=input_dim,
                                     hidden_size=hidden_dim_rec,  # 2 because we want mu and sigma
-                                    num_layers=2
+                                    num_layers=1
                                     )
         self.encoder_hidden2hidden = nn.Linear(hidden_dim_rec, hidden_dim_rec)
 
         self.enc2latent = nn.Linear(hidden_dim_rec, 2 * latent_dim)
 
         # decoder net p(x_t+1|x_1:t,z_1:t)
+
         self.decoder_LSTM = nn.LSTM(input_size=input_dim + latent_dim,
                                     hidden_size=hidden_dim_gen,
-                                    num_layers=2
+                                    num_layers=1
                                     )
 
         self.decoder_hidden2hidden = nn.Linear(hidden_dim_gen, hidden_dim_gen)
 
         self.dec2features = nn.Linear(hidden_dim_gen, param_dist * input_dim)
+
+        self.decoder = nn.Sequential(
+            self.decoder_LSTM,
+            self.decoder_hidden2hidden,
+            nn.ReLU(),
+            self.dec2features
+        )
 
     def forward(self, x, device):
         outputs = {}
@@ -48,7 +56,8 @@ class Variational_LSTM(nn.Module):
         x_encoder = x.permute(1, 0, 2)
         encoder_out, (h, c) = self.encoder_LSTM(x_encoder)
         # add non-linearities and a level of abstraction
-        encoder_out = self.relu(self.encoder_hidden2hidden(encoder_out))
+        # encoder_out = self.relu(self.encoder_hidden2hidden(encoder_out))
+        # encoder_out = self.relu(encoder_out)
         # [seq_len, batch_dim, features]
         x_latent = self.enc2latent(encoder_out)  # outputs the latent variable parameters mu and sigma
 
@@ -61,8 +70,7 @@ class Variational_LSTM(nn.Module):
             epsilon = torch.randn(seq_length,
                                   batch_size,
                                   self.latent_dim,
-                                  # latent_samples here, but should only be one as we concatenate it to the oringinal x
-                                  ).to(device)  # 10 is the num of latent samples
+                                  ).to(device)
         # create the random latent variable, reparametrization trick
         z = mu + sigma * epsilon
 
@@ -81,7 +89,9 @@ class Variational_LSTM(nn.Module):
         # run it through the ordinary LSTM
         decoder_out, (h, c) = self.decoder_LSTM(x_aug)
         # symmetry with encoder
-        decoder_out = self.relu(self.decoder_hidden2hidden(decoder_out))
+        # decoder_out = self.relu(self.decoder_hidden2hidden(decoder_out))
+        # decoder_out = self.relu(decoder_out)
+
         # [sequence_len, batch_size, dimensions]
         params = self.dec2features(decoder_out)
 
@@ -105,31 +115,37 @@ def loss_normal2d(model_output, device, beta):
     # iterate over each time step in the sequence to compute NLL and KL terms
 
     t = 0
-    cov_matrix = torch.diag_embed(sigma[t, :, :])
     # define the distribution
-    p = distributions.MultivariateNormal(mu[t, :, :], cov_matrix)
-    log_prob = torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
+    p = distributions.Normal(mu[t, :, :], sigma[t, :, :])
+    log_prob = torch.sum(p.log_prob(x_true[t + 1, :, :]), dim=-1)
     # dimensions [batch_size, dimension]
     ones_vector = torch.ones((z_mu.shape[1], z_mu.shape[2])).to(device)
     # KL-divergence
-    kl = 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 - torch.exp(z_log_var[t, :, :]), dim=-1)
+    negative_kl = 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 - torch.exp(z_log_var[t, :, :]),
+                                  dim=-1)
 
+    kl_tt = -1 * negative_kl
     for t in range(1, seq_length - 1):
         # print(t)
         # construct (diagonal) covariance matrix for each time step based on
         # the estimated var from the model
-        cov_matrix = torch.diag_embed(sigma[t, :, :])
+        #        cov_matrix = torch.diag_embed(sigma[t, :, :])
 
         # define the distribution
         #        p = distributions.Normal(mu[:, t, :], sigma[:, t, :])
-        p = distributions.MultivariateNormal(mu[t, :, :], cov_matrix)
+        #        p = distributions.MultivariateNormal(mu[t, :, :], cov_matrix)
 
-        log_prob += torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
+        #        log_prob += torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
+        p = distributions.Normal(mu[t, :, :], sigma[t, :, :])
+
+        log_prob += torch.sum(p.log_prob(x_true[t + 1, :, :]), dim=-1)
         # KL-divergence
-        kl += 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 -
-                              torch.exp(z_log_var[t, :, :]))
+        negative_kl += 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 -
+                                       torch.exp(z_log_var[t, :, :]), dim=-1)
 
-    NLL, KL = -torch.mean(log_prob, dim=0) / (seq_length - 1), -torch.mean(kl, dim=0) / (seq_length - 1)
+        kl_tt += -1* negative_kl
+    # average over the batches and divide by the sequence len - 1 to get the average over the sequence
+    NLL, KL = -torch.mean(log_prob, dim=0) / (seq_length - 1), -torch.mean(kl_tt, dim=0)/ (seq_length - 1)
 
     ELBO = NLL + beta * KL
 
@@ -174,7 +190,7 @@ def loss_normal2d_lognormal(model_output, device, beta):
                               torch.exp(z_log_var[t, :, :]))
 
     NLL, KL = -torch.mean(torch.mean(log_prob, dim=-1), dim=0) / (seq_length - 1), -torch.mean(kl, dim=0) / (
-                seq_length - 1)
+            seq_length - 1)
 
     ELBO = NLL + beta * KL
 

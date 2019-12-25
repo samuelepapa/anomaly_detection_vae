@@ -17,6 +17,7 @@ class Standard_LSTM(nn.Module):
         self.lstm = nn.LSTM(input_dimension, hidden_dim, num_layers=2)
         self.hidden2hidden = nn.Linear(hidden_dim, hidden_dim)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.75)
         self.hidden2params = nn.Linear(hidden_dim, param_size * input_dimension)
 
     def forward(self, x, device):
@@ -29,7 +30,7 @@ class Standard_LSTM(nn.Module):
         lstm_out, (h, c) = self.lstm(x)
         # linear wants [batch, seq_len, hidden_size]
         # lstm_out = lstm_out.permute(1, 0, 2)
-        linear_in = self.relu(self.hidden2hidden(lstm_out))
+        linear_in = self.dropout(self.relu(self.hidden2hidden(lstm_out)))
 
         # take output of hidden layers at each time step h_t and run it through a fully connected layer
         params = self.hidden2params(linear_in)

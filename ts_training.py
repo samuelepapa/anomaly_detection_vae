@@ -25,9 +25,88 @@ def anomaly_detection_accuracy(ground_truth, predictions):
         "total": total  # total number of datapoints in the sequence
     }
 
+def plot_LSTM(valid_dataset, train_loss, valid_loss, step_valid_loss, valid_accuracy):
+    is_labelled = valid_dataset.has_labels()
+    fig = plt.figure(figsize=(20, 7))
+    num_plots = 2 if is_labelled else 1
+    ax1 = plt.subplot(1, num_plots, 1)
+    ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
+    ax1.plot(np.concatenate((np.array([0]), (np.array(range(1,len(valid_loss))) * step_valid_loss)-1)), valid_loss, label="Validation loss")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Loss")
+    ax1.legend()
+
+    if is_labelled:
+        ax2 = plt.subplot(1, 3, 3)
+        ax2.plot(np.array(range(len(valid_accuracy["total"]))) * 10,
+                 valid_accuracy["correct"] / valid_accuracy["total"],
+                 label="Correctly labelled signals")
+        ax2.set_xlabel("Epoch")
+        ax2.set_ylabel("Percentage")
+        ax2.legend(loc="upper left")
+    return fig
+
+def plot_VAE(valid_dataset, train_KL, train_loss, valid_loss, step_valid_loss, valid_accuracy, z):
+    is_labelled = valid_dataset.has_labels()
+    #has_2_latent = True if z.shape[2] == 2 else False
+    latent_features = z.shape[2]
+    fig = plt.figure(figsize=(20, (latent_features+1)*8), constrained_layout=True)
+
+    if is_labelled:
+        num_plots = (latent_features+1, 3)
+    else:
+        num_plots = (latent_features+1, 2)
+
+
+    gs = fig.add_gridspec(*num_plots)
+
+    cur_plot = 0
+    ax1 = fig.add_subplot(gs[0,cur_plot])
+    ax1.set_title("ELBO")
+    ax1.plot(range(len(train_loss)), train_loss, label="Training ELBO")
+    ax1.plot(np.concatenate((np.array([0]), (np.array(range(1,len(valid_loss))) * step_valid_loss)-1)), valid_loss, label="Validation ELBO")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("ELBO")
+    ax1.legend()
+
+    cur_plot += 1
+    ax2 = fig.add_subplot(gs[0,cur_plot])
+    ax2.set_title("KL divergence")
+    kl, = ax2.plot(range(len(train_KL)), train_KL, label="Training KL")
+    ax2.set_xlabel("Epoch")
+    ax2.set_ylabel("KL")
+    ax2.legend()
+
+    cur_plot += 1
+    if is_labelled:
+        ax3 = fig.add_subplot(gs[0,cur_plot])
+        ax3.set_title("Correctly labelled signals")
+        ax3.plot(np.array(range(len(valid_accuracy["total"]))) * 10,
+                 valid_accuracy["correct"] / valid_accuracy["total"],
+                 label="Correctly labelled signals")
+        ax3.set_xlabel("Epoch")
+        ax3.set_ylabel("Percentage")
+        ax3.legend(loc="upper left")
+
+    cur_row = 1
+    for latent_feature in range(latent_features):
+        ax4 = fig.add_subplot(gs[cur_row,:])
+        ax4.set_title("Latent feature {}".format(latent_feature))
+        #color = np.linspace(0,1,z.shape[0])
+        #ax4.scatter(*z[:,0,:].reshape(-1,2).T, c = color, label = "Darker color, bigger time")
+        ax4.plot(list(range(z.shape[0])), z[:, 0, latent_feature])
+        ax4.set_xlabel("Time")
+        ax4.set_ylabel("Amplitude")
+        cur_row += 1
+
+    return fig
 
 def train_network(device, train_loader, valid_dataset, epochs, net, loss_function, optimizer, beta_annealing=None,
                   scheduler=None, plotting=True, p_anomaly=0.01):
+    torch.manual_seed(42)
+    np.random.seed(42)
+
+    PLOT_STEP = 10
     train_loss = []
     train_KL = []
     print("Training has started.")
@@ -55,10 +134,11 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
     train_accuracy = {
 
     }
+    z = None
     # cycle through the epochs
     for epoch in range(epochs):
         if plotting:
-            if epoch % 10 == 0:
+            if ((epoch+1) % PLOT_STEP == 0) or (epoch == 0):
                 print("Epoch: {}".format(epoch))
 
         batch_loss = []
@@ -69,7 +149,7 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
 
         for batch_idx, x in enumerate(train_loader):
             net.zero_grad()
-
+            #optimizer.zero_grad()
             # shape: [batch_size, seq_len, features]
             input = x[0]  # x[0] is the data x[1] is the labels
 
@@ -86,6 +166,7 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
             batch_loss.append(loss_params["loss"].item())
             # if there is a KL divergence, add it
             if "KL" in loss_params.keys():
+                z = output_model["z"].cpu().detach()
                 batch_KL.append(loss_params["KL"].item())
 
             # BACKPROPAGATION
@@ -98,7 +179,7 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
         if len(batch_KL) > 0:
             train_KL.append(np.mean(batch_KL))
         # every 10 epochs
-        if epoch % 10 == 0:
+        if ((epoch+1) % PLOT_STEP == 0) or epoch == 0:
             net.eval()
             with torch.no_grad():
                 # forward pass using the validation sequence
@@ -115,9 +196,9 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
                 if valid_dataset.has_labels():
                     # detect the anomalies
                     if beta_annealing is None:
-                        anomaly_data = detect_anomalies(valid_sequence, net, device, p_anomaly)
+                        anomaly_data = detect_anomalies(valid_sequence, net, device, p_anomaly, False)
                     else:
-                        anomaly_data = detect_anomalies_VAE(output_model, device, p_anomaly)
+                        anomaly_data = detect_anomalies_VAE(valid_sequence, net, device, p_anomaly)
                     # what we predict is an anomaly
                     predictions = anomaly_data["outlier_label"]
                     # find the accuracy of the prediction
@@ -132,7 +213,9 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
             if plotting:
 
                 if len(train_KL) == 0:
-                    plt.figure(figsize=(20, 7))
+                    plot_LSTM(valid_dataset, train_loss, valid_loss, PLOT_STEP, valid_accuracy)
+                    plt.show()
+                    """plt.figure(figsize=(20, 7))
                     num_plots = 2 if valid_dataset.has_labels() else 1
                     ax1 = plt.subplot(1, num_plots, 1)
                     ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
@@ -149,9 +232,11 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
                         ax2.set_xlabel("Epoch")
                         ax2.set_ylabel("Percentage")
                         ax2.legend(loc = "upper left")
-                    plt.show()
+                    plt.show()"""
                 else:
-                    plt.figure(figsize=(20, 10))
+                    plot_VAE(valid_dataset, train_KL, train_loss, valid_loss, PLOT_STEP, valid_accuracy,z)
+                    plt.show()
+                    """plt.figure(figsize=(20, 10))
                     num_plots = 3 if valid_dataset.has_labels() else 2
                     ax1 = plt.subplot(1, num_plots, 1)
                     ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
@@ -172,14 +257,17 @@ def train_network(device, train_loader, valid_dataset, epochs, net, loss_functio
                         ax3.set_xlabel("Epoch")
                         ax3.set_ylabel("Percentage")
                         ax3.legend(loc="upper left")
-                    plt.show()
+                    plt.show()"""
 
         # step in the scheduler and in the annealing of beta
         if scheduler != None:
             scheduler.step()
         if beta_annealing != None:
             beta = beta_annealing(beta, epoch)
-    if (plotting):
-        plt.plot(range(len(train_loss)), train_loss)
-        plt.show()
-    return net.state_dict()
+
+    if len(train_KL) == 0:
+        fig = plot_LSTM(valid_dataset, train_loss, valid_loss, PLOT_STEP, valid_accuracy)
+    else:
+        fig = plot_VAE(valid_dataset, train_KL, train_loss, valid_loss, PLOT_STEP, valid_accuracy, z)
+
+    return net.state_dict(), fig
