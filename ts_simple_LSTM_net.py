@@ -11,13 +11,18 @@ class Standard_LSTM(nn.Module):
     def __init__(self, input_dimension, param_size, hidden_dim):
         super(Standard_LSTM, self).__init__()
 
+        # parameters
         self.input_dimension = input_dimension
         self.hidden_dim = hidden_dim
         self.param_size = param_size
+
+        # activation and dropout
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.3)
+
+        # model
         self.lstm = nn.LSTM(input_dimension, hidden_dim, num_layers=2)
         self.hidden2hidden = nn.Linear(hidden_dim, hidden_dim)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.75)
         self.hidden2params = nn.Linear(hidden_dim, param_size * input_dimension)
 
     def forward(self, x, device):
@@ -29,8 +34,8 @@ class Standard_LSTM(nn.Module):
         # c is the cell state at the last time step
         lstm_out, (h, c) = self.lstm(x)
         # linear wants [batch, seq_len, hidden_size]
-        # lstm_out = lstm_out.permute(1, 0, 2)
-        linear_in = self.dropout(self.relu(self.hidden2hidden(lstm_out)))
+        # linear_in = self.dropout(self.relu(self.hidden2hidden(lstm_out)))
+        linear_in = self.dropout(lstm_out)
 
         # take output of hidden layers at each time step h_t and run it through a fully connected layer
         params = self.hidden2params(linear_in)

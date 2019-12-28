@@ -60,24 +60,27 @@ def load_data(scenario, T):
         # sine sequences
         signals = [
             ("sinusoid", {"frequency": 0.023, "amplitude": 2}),
-            #("sinusoid", {"frequency": 0.05, "amplitude": 2}),
+            # ("sinusoid", {"frequency": 0.05, "amplitude": 2}),
             #            ("gp", {"kernel": 'Periodic', "p": 50}),
             ("ar", {"ar_param": [0.8, 0.15], "sigma": 1})
         ]
 
         # create the timeseries
         signals = generate_timeseries(signals, T=T, noise_std=0.01,
-                                                 transforms=[#lambda x: 5 * np.sin(x),
-                                                             lambda x: x ** 3],
-                                                 #            #lambda x: 5 * np.sign(x)],
-                                                 transforms_std=[0.07, 0.03, 0.04])
+                                      transforms=[  # lambda x: 5 * np.sin(x),
+                                          lambda x: x ** 3],
+                                      #            #lambda x: 5 * np.sign(x)],
+                                      transforms_std=[0.07, 0.03, 0.04])
         #        timeseries_signals = generate_timeseries(signals, T=T, noise_std=0.001)
     elif scenario == 2:
         df_LA = pd.read_csv("LA.csv")
         signals = df_LA.to_numpy()[:T, :]
 
+    elif scenario == 3:
+        df_LA = pd.read_csv("LA.csv")
+        signals = df_LA.to_numpy()[:T, :]
     else:
-        raise ValueError("Scenario not recognized, it should be 0, 1 or 2.")
+        raise ValueError("Scenario not recognized, it should be 0, 1, 2 or 3.")
     return signals
 
 
@@ -105,6 +108,7 @@ def get_datasets(scenario, t_v_t_split, W, device, signals, labels=None):
     elif scenario == 2:
         features = 3
         normalized_signals = (signals - np.mean(signals, axis=0)) / np.std(signals, axis=0)
+
         train_dataset = RealisticDataset(normalized_signals[0:train_valid_time, :3], features, window_size=W,
                                          device=device)
         valid_dataset = RealisticDataset(normalized_signals[train_valid_time:valid_test_time, :3], features,
@@ -112,11 +116,18 @@ def get_datasets(scenario, t_v_t_split, W, device, signals, labels=None):
                                          device=device)
         test_dataset = RealisticDataset(normalized_signals[valid_test_time:, :3], features, window_size=W,
                                         device=device)
+    elif scenario == 3:
+        features = 2
+        #        normalized_signals = (signals - np.mean(signals, axis=0)) / np.std(signals, axis=0)
+        #normalized_signals = (signals-np.exp(np.mean(np.log(signals), axis = 0)))
+        train_dataset = RealisticDataset(signals[0:train_valid_time, 3:], features, window_size=W, device=device)
+        valid_dataset = RealisticDataset(signals[train_valid_time:valid_test_time, 3:], features, window_size=W,
+                                         device=device)
+        test_dataset = RealisticDataset(signals[valid_test_time:, 3:], features, window_size=W, device=device)
     else:
         train_dataset = None
         valid_dataset = None
         test_dataset = None
-
 
     return features, \
            train_dataset, \

@@ -11,12 +11,16 @@ class Variational_LSTM(nn.Module):
     def __init__(self, input_dim, param_dist, hidden_dim_rec, hidden_dim_gen, latent_dim):
         super(Variational_LSTM, self).__init__()
 
+        # parameters
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         self.hidden_dim_rec = hidden_dim_rec
         self.hidden_dim_gen = hidden_dim_gen
 
+        # activation and dropouts
         self.relu = nn.ReLU()
+        self.dropout1 = nn.Dropout(p=0.2)
+        self.dropout2 = nn.Dropout(p=0.2)
 
         # encoder net, recognition model q(z_t+1|x_1:t)
         self.encoder_LSTM = nn.LSTM(input_size=input_dim,
@@ -59,7 +63,7 @@ class Variational_LSTM(nn.Module):
         # encoder_out = self.relu(self.encoder_hidden2hidden(encoder_out))
         # encoder_out = self.relu(encoder_out)
         # [seq_len, batch_dim, features]
-        x_latent = self.enc2latent(encoder_out)  # outputs the latent variable parameters mu and sigma
+        x_latent = self.enc2latent(self.dropout1(encoder_out))  # outputs the latent variable parameters mu and sigma
 
         # make the network learn the log of the variance it is non-negative (log only takes pos x)
         mu, log_var = torch.chunk(x_latent, 2, dim=-1)
@@ -84,7 +88,6 @@ class Variational_LSTM(nn.Module):
         # concatenate the latent variables with the original input x
         # [sequence_len, batch_size, dimensions]
         x_aug = torch.cat((x_encoder, z), dim=-1)  # aug = augmented x, because we augment x with z
-        # x_aug = x_aug.view(seq_len, self.batch_size, self.input_dim + self.latent_dim)
 
         # run it through the ordinary LSTM
         decoder_out, (h, c) = self.decoder_LSTM(x_aug)
@@ -93,7 +96,7 @@ class Variational_LSTM(nn.Module):
         # decoder_out = self.relu(decoder_out)
 
         # [sequence_len, batch_size, dimensions]
-        params = self.dec2features(decoder_out)
+        params = self.dec2features(self.dropout2(decoder_out))
 
         # store the outputs in the form (batch_size, seq_length, input_dim)
         outputs["params"] = params
@@ -123,8 +126,8 @@ def loss_normal2d(model_output, device, beta):
     # KL-divergence
     negative_kl = 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 - torch.exp(z_log_var[t, :, :]),
                                   dim=-1)
-
-    kl_tt = -1 * negative_kl
+    # KL divergence through time
+    kl_tt = -negative_kl
     for t in range(1, seq_length - 1):
         # print(t)
         # construct (diagonal) covariance matrix for each time step based on
@@ -143,9 +146,9 @@ def loss_normal2d(model_output, device, beta):
         negative_kl += 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 -
                                        torch.exp(z_log_var[t, :, :]), dim=-1)
 
-        kl_tt += -1* negative_kl
-    # average over the batches and divide by the sequence len - 1 to get the average over the sequence
-    NLL, KL = -torch.mean(log_prob, dim=0) / (seq_length - 1), -torch.mean(kl_tt, dim=0)/ (seq_length - 1)
+        kl_tt -= negative_kl
+    # average over the batches and divide by the sequence len-1 to get size independent from the length of the sequence
+    NLL, KL = -torch.mean(log_prob, dim=0) / (seq_length - 1), torch.mean(kl_tt, dim=0) / (seq_length - 1)
 
     ELBO = NLL + beta * KL
 
@@ -161,35 +164,42 @@ def loss_normal2d_lognormal(model_output, device, beta):
     # unpack the required quantities
     x_true = model_output["x_input"].permute(1, 0, 2)
     params = model_output["params"]
-    mu, logvar = torch.chunk(params, 2, dim=-1)
-    sigma = torch.exp(logvar / 2)
+    rate = torch.exp(params)
+    # sigma = torch.exp(logvar / 2)
 
     z_mu = model_output["z_mu"]
     z_log_var = model_output["z_log_var"]
 
-    seq_length = mu.shape[0]
+    seq_length = rate.shape[0]
     # iterate over each time step in the sequence to compute NLL and KL terms
 
     t = 0
     # define the distribution
-    p = distributions.LogNormal(mu[t, :, :], sigma[t, :, :])
-    log_prob = torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
+    p = distributions.Exponential(rate[t, :, :])
+    log_prob = torch.sum(p.log_prob(x_true[t + 1, :, :]), dim=-1)
     # dimensions [batch_size, dimension]
     ones_vector = torch.ones((z_mu.shape[0], z_mu.shape[2])).to(device)
     # KL-divergence
-    kl = 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 - torch.exp(z_log_var[t, :, :]), dim=-1)
+    negative_kl = 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 - torch.exp(z_log_var[t, :, :]),
+                                  dim=-1)
+
+    # KL divergence through time
+    kl_tt = -negative_kl
 
     for t in range(1, seq_length - 1):
         # define the distribution
         #        p = distributions.Normal(mu[:, t, :], sigma[:, t, :])
-        p = distributions.LogNormal(mu[t, :, :], sigma[t, :, :])
+        #        p = distributions.LogNormal(mu[t, :, :], sigma[t, :, :])
+        p = distributions.Exponential(rate[t, :, :])
 
-        log_prob += torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
+        log_prob += torch.sum(p.log_prob(x_true[t + 1, :, :]), dim=-1)
         # KL-divergence
-        kl += 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 -
-                              torch.exp(z_log_var[t, :, :]))
+        negative_kl += 0.5 * torch.sum(ones_vector + z_log_var[t, :, :] - z_mu[t, :, :] ** 2 -
+                                       torch.exp(z_log_var[t, :, :]))
 
-    NLL, KL = -torch.mean(torch.mean(log_prob, dim=-1), dim=0) / (seq_length - 1), -torch.mean(kl, dim=0) / (
+        kl_tt -= negative_kl
+
+    NLL, KL = -torch.mean(log_prob, dim=-1) / (seq_length - 1), torch.mean(kl_tt, dim=0) / (
             seq_length - 1)
 
     ELBO = NLL + beta * KL
