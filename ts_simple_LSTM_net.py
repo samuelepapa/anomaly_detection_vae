@@ -18,7 +18,7 @@ class Standard_LSTM(nn.Module):
 
         # activation and dropout
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.1)
 
         # model
         self.lstm = nn.LSTM(input_dimension, hidden_dim, num_layers=2)

@@ -19,8 +19,8 @@ class Variational_LSTM(nn.Module):
 
         # activation and dropouts
         self.relu = nn.ReLU()
-        self.dropout1 = nn.Dropout(p=0.2)
-        self.dropout2 = nn.Dropout(p=0.2)
+        self.dropout1 = nn.Dropout(p=0.1)
+        self.dropout2 = nn.Dropout(p=0.1)
 
         # encoder net, recognition model q(z_t+1|x_1:t)
         self.encoder_LSTM = nn.LSTM(input_size=input_dim,

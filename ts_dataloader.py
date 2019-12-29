@@ -42,7 +42,7 @@ class RealisticDataset(Dataset):
 def load_data(scenario, T):
     if scenario == 0:
         signals = [
-            ("sinusoid", {"frequency": 0.19}),
+            ("sinusoid", {"frequency": 0.47}),
             ("ar", {"ar_param": [0.8, 0.15], "sigma": 1}),
             ("sinusoid", {"frequency": 0.5}),
             ("sinusoid", {"frequency": 0.3}),

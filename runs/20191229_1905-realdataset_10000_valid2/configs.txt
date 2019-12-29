@@ -1,0 +1,14 @@
+Not labelled 
+Anomalies magnitude: 0
+Anomalies probability: 0
+Params out distrib: 2
+LSTM
+Epochs: 200
+Hidden_dim: 64
+{'correct': 0, 'false_positives': 0, 'false_negatives': 0, 'total': 0, 'anomaly_count': 0}
+VAE
+Epochs: 200
+Hidden dim gen: 128
+Hidden dim rec: 128
+Latent dim: 2
+{'correct': 0, 'false_positives': 0, 'false_negatives': 0, 'total': 0, 'anomaly_count': 0}

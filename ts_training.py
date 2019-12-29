@@ -28,9 +28,12 @@ def anomaly_detection_accuracy(ground_truth, predictions):
 
 def plot_LSTM(valid_dataset, train_loss, valid_loss, step_valid_loss, valid_accuracy):
     is_labelled = valid_dataset.has_labels()
-    fig = plt.figure(figsize=(20, 7))
-    num_plots = 2 if is_labelled else 1
-    ax1 = plt.subplot(1, num_plots, 1)
+    fig = plt.figure(figsize=(8, 8), constrained_layout=True)
+    num_plots = (1, 2) if is_labelled else (1, 1)
+
+    gs = fig.add_gridspec(*num_plots)
+
+    ax1 = fig.add_subplot(gs[0, 0])
     ax1.set_title("Loss")
     ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
     ax1.plot(np.concatenate((np.array([0]), (np.array(range(1, len(valid_loss))) * step_valid_loss) - 1)), valid_loss,
@@ -40,14 +43,14 @@ def plot_LSTM(valid_dataset, train_loss, valid_loss, step_valid_loss, valid_accu
     ax1.legend()
 
     if is_labelled:
-        ax2 = plt.subplot(1, 2, 2)
+        ax2 = fig.add_subplot(gs[0, 1])
         ax2.set_title("Correctly labelled signals validation set")
         ax2.plot(np.array(range(len(valid_accuracy["total"]))) * 10,
                  valid_accuracy["correct"] / valid_accuracy["total"],
                  label="Correctly labelled signals")
         ax2.set_xlabel("Epoch")
         ax2.set_ylabel("Percentage")
-        ax2.legend(loc="upper left")
+        ax2.legend(loc="lower right")
     return fig
 
 
@@ -55,58 +58,69 @@ def plot_VAE(valid_dataset, train_KL, train_loss, train_NLL, valid_loss, valid_N
     is_labelled = valid_dataset.has_labels()
     # has_2_latent = True if z.shape[2] == 2 else False
     latent_features = z.shape[2]
-    fig = plt.figure(figsize=(20, (latent_features + 1) * 8), constrained_layout=True)
+    fig = plt.figure(figsize=(8, 8), constrained_layout=True)
 
-    if is_labelled:
-        num_plots = (latent_features + 2, 2)
-    else:
-        num_plots = (latent_features + 1, 3)
+    #if is_labelled:
+    num_plots = (2, 2)
+    #else:
+    #    num_plots = (1, 3)
 
     gs = fig.add_gridspec(*num_plots)
 
-    ax1 = fig.add_subplot(gs[0, 0])
+    if is_labelled:
+        ax1 = fig.add_subplot(gs[0, 0])
+    else:
+        ax1 = fig.add_subplot(gs[0, :])
+    #ax1 = fig.add_subplot(gs[0, 0])
     ax1.set_title("ELBO")
     ax1.plot(range(len(train_loss)), train_loss, label="Training ELBO")
     ax1.plot(np.concatenate((np.array([0]), (np.array(range(1, len(valid_loss))) * step_valid_loss) - 1)), valid_loss,
              label="Validation ELBO")
     ax1.set_xlabel("Epoch")
     ax1.set_ylabel("ELBO")
-    ax1.legend()
+    ax1.legend(loc="upper right")
 
-    ax5 = fig.add_subplot(gs[0, 1])
+    if is_labelled:
+        ax5 = fig.add_subplot(gs[0, 1])
+    else:
+        ax5 = fig.add_subplot(gs[1, 0])
+    #ax5 = fig.add_subplot(gs[0, 1])
     ax5.set_title("NLL")
     ax5.plot(range(len(train_NLL)), train_NLL, label="Training NLL")
     ax5.plot(np.concatenate((np.array([0]), (np.array(range(1, len(valid_NLL))) * step_valid_loss) - 1)), valid_NLL,
              label="Validation NLL")
     ax5.set_xlabel("Epoch")
     ax5.set_ylabel("NLL")
-    ax5.legend()
+    ax5.legend(loc="upper right")
 
     if is_labelled:
         ax2 = fig.add_subplot(gs[1, 0])
     else:
-        ax2 = fig.add_subplot(gs[0, 2])
+        ax2 = fig.add_subplot(gs[1, 1])
 
     ax2.set_title("KL divergence")
     kl, = ax2.plot(range(len(train_KL)), train_KL, label="Training KL")
     ax2.set_xlabel("Epoch")
     ax2.set_ylabel("KL")
-    ax2.legend()
+    ax2.legend(loc="upper right")
 
     cur_row = 1
     if is_labelled:
         cur_row = 2
         ax3 = fig.add_subplot(gs[1, 1])
-        ax3.set_title("Correctly labelled signals validation set")
+        ax3.set_title("Correctly labelled signals\n validation set")
         ax3.plot(np.array(range(len(valid_accuracy["total"]))) * 10,
                  valid_accuracy["correct"] / valid_accuracy["total"],
-                 label="Correctly labelled signals")
+                 label="Correct labels")
         ax3.set_xlabel("Epoch")
         ax3.set_ylabel("Percentage")
-        ax3.legend(loc="upper left")
+        ax3.legend(loc="lower right")
 
+    fig2 = plt.figure(figsize=(15, 10*latent_features), constrained_layout=True)
+    gs2 = fig2.add_gridspec(latent_features,1)
+    cur_row = 0
     for latent_feature in range(latent_features):
-        ax4 = fig.add_subplot(gs[cur_row, :])
+        ax4 = fig2.add_subplot(gs2[cur_row, :])
         ax4.set_title("Latent feature {}".format(latent_feature))
         # color = np.linspace(0,1,z.shape[0])
         # ax4.scatter(*z[:,0,:].reshape(-1,2).T, c = color, label = "Darker color, bigger time")
@@ -114,7 +128,7 @@ def plot_VAE(valid_dataset, train_KL, train_loss, train_NLL, valid_loss, valid_N
         ax4.set_xlabel("Time")
         ax4.set_ylabel("Amplitude")
         cur_row += 1
-
+    fig2.show()
     return fig
 
 
