@@ -6,7 +6,8 @@ Time Series Variational Inference LSTM
 import torch
 from torch import nn, distributions
 
-
+#Variational LSTM
+# the VI LSTM approach.
 class Variational_LSTM(nn.Module):
     def __init__(self, input_dim, param_dist, hidden_dim_rec, hidden_dim_gen, latent_dim):
         super(Variational_LSTM, self).__init__()
@@ -32,7 +33,6 @@ class Variational_LSTM(nn.Module):
         self.enc2latent = nn.Linear(hidden_dim_rec, 2 * latent_dim)
 
         # decoder net p(x_t+1|x_1:t,z_1:t)
-
         self.decoder_LSTM = nn.LSTM(input_size=input_dim + latent_dim,
                                     hidden_size=hidden_dim_gen,
                                     num_layers=1
@@ -41,13 +41,6 @@ class Variational_LSTM(nn.Module):
         self.decoder_hidden2hidden = nn.Linear(hidden_dim_gen, hidden_dim_gen)
 
         self.dec2features = nn.Linear(hidden_dim_gen, param_dist * input_dim)
-
-        self.decoder = nn.Sequential(
-            self.decoder_LSTM,
-            self.decoder_hidden2hidden,
-            nn.ReLU(),
-            self.dec2features
-        )
 
     def forward(self, x, device):
         outputs = {}
@@ -63,7 +56,9 @@ class Variational_LSTM(nn.Module):
         # encoder_out = self.relu(self.encoder_hidden2hidden(encoder_out))
         # encoder_out = self.relu(encoder_out)
         # [seq_len, batch_dim, features]
-        x_latent = self.enc2latent(self.dropout1(encoder_out))  # outputs the latent variable parameters mu and sigma
+
+        # outputs the latent variable parameters mu and sigma
+        x_latent = self.enc2latent(self.dropout1(self.relu(encoder_out)))
 
         # make the network learn the log of the variance it is non-negative (log only takes pos x)
         mu, log_var = torch.chunk(x_latent, 2, dim=-1)
@@ -91,19 +86,22 @@ class Variational_LSTM(nn.Module):
 
         # run it through the ordinary LSTM
         decoder_out, (h, c) = self.decoder_LSTM(x_aug)
-        # symmetry with encoder
         # decoder_out = self.relu(self.decoder_hidden2hidden(decoder_out))
         # decoder_out = self.relu(decoder_out)
 
+        # symmetry with encoder
         # [sequence_len, batch_size, dimensions]
-        params = self.dec2features(self.dropout2(decoder_out))
+        params = self.dec2features(self.dropout2((self.relu(decoder_out))))
 
         # store the outputs in the form (batch_size, seq_length, input_dim)
         outputs["params"] = params
 
         return outputs
 
-
+# loss function used for Gaussian normal distribution of the signals
+# arguments:
+#   - model_output: the output of the model
+#   - device: where to place the data
 def loss_normal2d(model_output, device, beta):
     # unpack the required quantities
     x_true = model_output["x_input"].permute(1, 0, 2)
@@ -115,7 +113,6 @@ def loss_normal2d(model_output, device, beta):
     z_log_var = model_output["z_log_var"]
 
     seq_length = mu.shape[0]
-    # iterate over each time step in the sequence to compute NLL and KL terms
 
     t = 0
     # define the distribution
@@ -128,17 +125,10 @@ def loss_normal2d(model_output, device, beta):
                                   dim=-1)
     # KL divergence through time
     kl_tt = -negative_kl
+
+    # iterate over each time step in the sequence to compute NLL and KL terms
     for t in range(1, seq_length - 1):
-        # print(t)
-        # construct (diagonal) covariance matrix for each time step based on
-        # the estimated var from the model
-        #        cov_matrix = torch.diag_embed(sigma[t, :, :])
-
         # define the distribution
-        #        p = distributions.Normal(mu[:, t, :], sigma[:, t, :])
-        #        p = distributions.MultivariateNormal(mu[t, :, :], cov_matrix)
-
-        #        log_prob += torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
         p = distributions.Normal(mu[t, :, :], sigma[t, :, :])
 
         log_prob += torch.sum(p.log_prob(x_true[t + 1, :, :]), dim=-1)
@@ -159,8 +149,11 @@ def loss_normal2d(model_output, device, beta):
         "KL": KL
     }
 
-
-def loss_normal2d_lognormal(model_output, device, beta):
+# loss function used for Exponential normal distribution of the signals. Is not used in the testing.
+# arguments:
+#   - model_output: the output of the model
+#   - device: where to place the data
+def loss_normal2d_exponential(model_output, device, beta):
     # unpack the required quantities
     x_true = model_output["x_input"].permute(1, 0, 2)
     params = model_output["params"]

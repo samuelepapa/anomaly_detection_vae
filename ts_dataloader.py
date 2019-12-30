@@ -9,6 +9,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
+# RealisticDataset
+# helper class used to load the realistic weather dataset.
 class RealisticDataset(Dataset):
     """Setup data for the time series data"""
 
@@ -38,7 +40,9 @@ class RealisticDataset(Dataset):
     def has_labels(self):
         return False
 
-
+# arguments:
+#   - T: the length of the sequence to load.
+#   - scenario: the scenario selected. 1: simple dataset, 2: correlated dataset, 3: weather dataset.
 def load_data(scenario, T):
     if scenario == 0:
         signals = [
@@ -84,6 +88,14 @@ def load_data(scenario, T):
     return signals
 
 
+# splits the data in different dataset for later use
+# arguments:
+#   - scenario: current scenario selected. 1: simple dataset, 2: correlated dataset, 3: weather dataset.
+#   - t_v_t_split: train, validation test split, an array with 2 values indicating the proportion of train and valid.
+#   - W: the size of the training window.
+#   - device: where to place the data (cpu or gpu).
+#   - signals: the actual input data.
+#   - labels: labels for each signals if available.
 def get_datasets(scenario, t_v_t_split, W, device, signals, labels=None):
     T = signals.shape[0]
     features = signals.shape[1]

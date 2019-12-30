@@ -5,7 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-# %% data generation
+# SyntheticDataset
+# helper class used to manage the datasets from the synthetic data
 
 class SyntheticDataset(Dataset):
     """Setup data for the time series data"""
@@ -42,12 +43,19 @@ class SyntheticDataset(Dataset):
     def has_labels(self):
         return True
 
-
+# generates a timeseries with the given signals
+# arguments:
+#   - T: number of samples taken from the time interval e.g. [0, 1000].
+#   - noise_std: standard deviation of the Gaussian Noise added to the signal.
+#   - transforms: a list of anonymous functions e.g [lambda x: x**2, lambda x: np.sin(x)] that are applied to the
+#           signals.
+#   - transforms_std: standard deviation of the Gaussian noise added to each transform.
+#           If defined, should be e.g. [0.1,0.2,0.5] for 3 transforms
 def generate_timeseries(signals,
-                        T=100,  # number of samples taken from the time interval [0, 1000]
-                        noise_std=0.01,  # standard deviation of the Gaussian Noise added to the signal
-                        transforms=None,  # a list of anonymous functions e.g [lambda x: x**2, lambda x: np.sin(x)]
-                        transforms_std=None  # if defined, should be e.g. [0.1,0.2,0.5] for 3 transforms
+                        T=100,  #
+                        noise_std=0.01,  #
+                        transforms=None,  #
+                        transforms_std=None
                         ):
     # used to define the time scale
     time_sampler = ts.TimeSampler(stop_time=T // 5)
@@ -100,8 +108,11 @@ def generate_timeseries(signals,
     return output_samples.T
 
 
-# %% define anomaly function
-
+# insert the anomalies in the synthetic data
+# arguments:
+#   - timeseries_samples: the original data with no anomalies.
+#   - p: probability of anomaly.
+#   - magnitude: the magnitude of the anomaly.
 def insert_anomalies(timeseries_samples, p=0.01, magnitude=1):
     import random as rnd
     timeseries_samples_with_anomalies = np.zeros(timeseries_samples.shape)

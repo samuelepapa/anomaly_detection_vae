@@ -3,7 +3,10 @@ import numpy as np
 import torch
 from ts_anomaly_function import detect_anomalies, detect_anomalies_VAE
 
-
+# finds the precision of the anomaly detection
+# arguments:
+#   - ground_truth: the correct labelling for the signals.
+#   - predictions: the estimated labelling for the signals.
 def anomaly_detection_accuracy(ground_truth, predictions):
     correct = 0
     total = len(predictions) - 1
@@ -25,14 +28,24 @@ def anomaly_detection_accuracy(ground_truth, predictions):
         "total": total  # total number of datapoints in the sequence
     }
 
-
+# plots the training for the LSTM
+# arugments:
+#   - valid_dataset: the validation dataset, used to check whether labels are available.
+#   - train_loss: the training loss during training (every epoch).
+#   - valid_loss: the validation loss during training (every step_valid_loss epochs).
+#   - step_valid_loss: the number of epochs between one computation of the valid loss and the other.
+#   - valid_accuracy: precision of the prediction of labels on the validation set.
 def plot_LSTM(valid_dataset, train_loss, valid_loss, step_valid_loss, valid_accuracy):
+    # check if labels are available
     is_labelled = valid_dataset.has_labels()
-    fig = plt.figure(figsize=(8, 8), constrained_layout=True)
-    num_plots = (1, 2) if is_labelled else (1, 1)
 
+    # create the figure
+    fig = plt.figure(figsize=(8, 8), constrained_layout=True)
+    # number of plots based on type of data available
+    num_plots = (1, 2) if is_labelled else (1, 1)
     gs = fig.add_gridspec(*num_plots)
 
+    # Plot for the losses
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.set_title("Loss")
     ax1.plot(range(len(train_loss)), train_loss, label="Training loss")
@@ -42,6 +55,7 @@ def plot_LSTM(valid_dataset, train_loss, valid_loss, step_valid_loss, valid_accu
     ax1.set_ylabel("Loss")
     ax1.legend()
 
+    # Eventual plot for the number of correct labels
     if is_labelled:
         ax2 = fig.add_subplot(gs[0, 1])
         ax2.set_title("Correctly labelled signals validation set")
@@ -54,6 +68,13 @@ def plot_LSTM(valid_dataset, train_loss, valid_loss, step_valid_loss, valid_accu
     return fig
 
 
+# plots the training for the LSTM
+# arugments:
+#   - valid_dataset: the validation dataset, used to check whether labels are available.
+#   - train_loss: the training loss during training (every epoch).
+#   - valid_loss: the validation loss during training (every step_valid_loss epochs).
+#   - step_valid_loss: the number of epochs between one computation of the valid loss and the other.
+#   - valid_accuracy: precision of the prediction of labels on the validation set.
 def plot_VAE(valid_dataset, train_KL, train_loss, train_NLL, valid_loss, valid_NLL, step_valid_loss, valid_accuracy, z):
     is_labelled = valid_dataset.has_labels()
     # has_2_latent = True if z.shape[2] == 2 else False
@@ -131,18 +152,33 @@ def plot_VAE(valid_dataset, train_KL, train_loss, train_NLL, valid_loss, valid_N
     fig2.show()
     return fig
 
-
+# train the network
+# arugments:
+#   - device: the device where to push data (cpu of gpu).
+#   - train_loader: the Dataloader for the training dataset.
+#   - valid_dataset: the validation dataset.
+#   - epochs: the number of epochs.
+#   - net: the network that needs training.
+#   - loss_function: the loss function to be used.
+#   - optimizier: the optimizer used in the training.
+#   - beta_annealing: annealing schedule for the beta term in the ELBO (if we are training VI approach).
+#   - scheduler: the scheduler to use during training.
+#   - plotting: boolean whether to plot the training.
+#   - p_anomaly: probability of anomaly if we have labels in the dataset.
 def train_network(device, train_loader, valid_dataset, epochs, net, loss_function, optimizer, beta_annealing=None,
                   scheduler=None, plotting=True, p_anomaly=0.01):
+    # set the seeds
     torch.manual_seed(42)
     np.random.seed(42)
 
+    # initialize variables used during the entire training
     PLOT_STEP = 10
     train_loss = []
     train_KL = []
     train_NLL = []
     print("Training has started.")
 
+    # initialize beta
     if beta_annealing is None:
         beta = 1
     else:

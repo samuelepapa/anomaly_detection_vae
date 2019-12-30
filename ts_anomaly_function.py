@@ -12,12 +12,12 @@ from torch import distributions, Tensor
 # %% Outlier detection
 
 # arguments
-# - sequence: a tensor with dimensions T x D, where 
-#      T is number of obs and D is feature dimensions
-# - net: a trained model which outputs 2 params for each feature,
-#      that is, a tensor of dimension T x 2*D
-# - prob_threshold: a number between 0 and 1. An observation with 
-#      probability < prob_threshold is labeled as an outlier
+#   - sequence: a tensor with dimensions T x D, where
+#         T is number of obs and D is feature dimensions
+#   - net: a trained model which outputs 2 params for each feature,
+#         that is, a tensor of dimension T x 2*D
+#   - prob_threshold: a number between 0 and 1. An observation with
+#         probability < prob_threshold is labeled as an outlier
 def detect_anomalies(sequence, net, device, prob_threshold, std=False, k=0):
     with torch.no_grad():
         net.eval()
@@ -38,13 +38,14 @@ def detect_anomalies(sequence, net, device, prob_threshold, std=False, k=0):
         probs = []
         labels = [False] * seq_length
         for t in range(0, seq_length - 1):
+            # testing the use of the standard deviation
             if std:
                 # use the standard deviation to find if all the points are outside k times the std
                 anomaly = False
                 for feature in range(mu.shape[1]):
                     # if the signal is inside in just one feature it's not an anomaly
-                    if (prepared_sequence[0, t + 1, feature] > mu[t, feature] + k * sigma[t, feature]) or \
-                            (prepared_sequence[0, t + 1, feature] < mu[t, feature] - k * sigma[t, feature]):
+                    if (prepared_sequence[0, t + 1, feature] > (mu[t, feature] + k * sigma[t, feature])) or \
+                            (prepared_sequence[0, t + 1, feature] < (mu[t, feature] - k * sigma[t, feature])):
                         anomaly = True
                         break
                 if anomaly:
@@ -73,7 +74,7 @@ def detect_anomalies(sequence, net, device, prob_threshold, std=False, k=0):
         }
     return outliers
 
-
+# same as the previous function, uses the ELBO to estimate the probability
 def detect_anomalies_VAE(sequence, net, device, prob_threshold):
     with torch.no_grad():
         net.eval()

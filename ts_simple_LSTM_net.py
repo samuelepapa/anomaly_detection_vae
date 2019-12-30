@@ -1,12 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 import torch.distributions as distributions
 
 
-# x[batch_size, num_features]
-# z[batch_size, latent_features]
+#Standard_LSTM
+# the Baseline LSTM approach.
 class Standard_LSTM(nn.Module):
     def __init__(self, input_dimension, param_size, hidden_dim):
         super(Standard_LSTM, self).__init__()
@@ -35,7 +33,7 @@ class Standard_LSTM(nn.Module):
         lstm_out, (h, c) = self.lstm(x)
         # linear wants [batch, seq_len, hidden_size]
         # linear_in = self.dropout(self.relu(self.hidden2hidden(lstm_out)))
-        linear_in = self.dropout(lstm_out)
+        linear_in = self.dropout(self.relu(lstm_out))
 
         # take output of hidden layers at each time step h_t and run it through a fully connected layer
         params = self.hidden2params(linear_in)
@@ -45,6 +43,10 @@ class Standard_LSTM(nn.Module):
         return outputs
 
 
+# loss function used for Gaussian normal distribution of the signals
+# arguments:
+#   - model_output: the output of the model
+#   - device: where to place the data
 def loss_function_normal(model_output, device):
     # unpack the required quantities
     x_true = model_output["x_input"].permute(1, 0, 2)
@@ -58,22 +60,15 @@ def loss_function_normal(model_output, device):
     # extrapolate parameters
     mu, log_var = torch.chunk(model_output["params"], 2, dim=2)
     sigma = torch.exp(log_var / 2)
-    #print(mu.shape)
     #get the length of the sequence
     seq_length = mu.shape[0]
     # iterate over each time step in the sequence to compute NLL
     t = 0
-    #cov_matrix = torch.diag_embed(sigma[:, t, :])
     # define the distribution
     p = distributions.Normal(mu[t, :, :], sigma[t, :, :])
     log_prob = torch.mean(p.log_prob(x_true[t + 1, :, :]), dim=-1)
 
     for t in range(1, seq_length - 1):
-        # print(t)
-        # construct (diagonal) covariance matrix for each time step based on
-        # the estimated var from the model
-        #cov_matrix = torch.diag_embed(sigma[:, t, :])
-
         # define the distribution
         p = distributions.Normal(mu[t, :, :], sigma[t, :, :])
 
